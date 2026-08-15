@@ -10,68 +10,6 @@
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
   const esc = (s) => ('' + (s == null ? '' : s)).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-  /* ===================== 手绘插画（内联 SVG，currentColor 跟随模块色） ===================== */
-  function illus(type) {
-    const open = '<div class="illus deco"><svg viewBox="0 0 120 120" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">';
-    const close = '</svg></div>';
-    const INK = '#514c5a', BLUSH = '#f4b4ba';
-    const face = (cx, cy, s) => `<circle cx="${cx - 6 * s}" cy="${cy}" r="${2.2 * s}" fill="${INK}" stroke="none"/><circle cx="${cx + 6 * s}" cy="${cy}" r="${2.2 * s}" fill="${INK}" stroke="none"/><path d="M${cx - 5 * s} ${cy + 6 * s} q${5 * s} ${5 * s} ${10 * s} 0" stroke="${INK}" stroke-width="${2.3 * s}" fill="none"/><circle cx="${cx - 12 * s}" cy="${cy + 3 * s}" r="${3 * s}" fill="${BLUSH}" stroke="none"/><circle cx="${cx + 12 * s}" cy="${cy + 3 * s}" r="${3 * s}" fill="${BLUSH}" stroke="none"/>`;
-    const S = 'fill="currentColor" fill-opacity=".12"';
-    switch (type) {
-      case 'empty': return open + `
-        <path d="M34 44 l14 -14 14 14 14 -14 14 14 v46 q0 6 -6 6 h-50 q-6 0 -6 -6 z" ${S}/>
-        <path d="M44 58 h32" stroke-width="2.6"/>
-        ${face(64, 54, 0.9)}` + close;
-      case 'projects': return open + `
-        <rect x="30" y="58" width="40" height="30" rx="7" ${S}/>
-        <rect x="40" y="42" width="40" height="30" rx="7" ${S}/>
-        <path d="M40 56 h40" stroke-width="2.6"/>
-        ${face(60, 50, 0.8)}` + close;
-      case 'calendar': return open + `
-        <rect x="28" y="36" width="64" height="60" rx="9" ${S}/>
-        <path d="M28 52 h64" stroke-width="2.6"/>
-        <path d="M44 28 v10 M76 28 v10" stroke-width="2.6"/>
-        ${face(60, 66, 0.8)}` + close;
-      case 'export': return open + `
-        <rect x="32" y="30" width="40" height="44" rx="8" ${S}/>
-        <path d="M44 40 v22 M44 58 l-8 -8 M44 58 l8 -8" stroke-width="3"/>
-        <path d="M26 92 h68" stroke-width="2.6"/>
-        <path d="M34 84 h52 l-5 10 h-42 z" ${S}/>` + close;
-      case 'personnel': return open + `
-        <circle cx="46" cy="48" r="13" ${S}/>
-        <path d="M26 90 q2 -22 20 -22 q18 0 20 22" ${S}/>
-        <circle cx="78" cy="54" r="11" ${S}/>
-        <path d="M64 90 q1 -18 14 -18 q13 0 14 18" ${S}/>
-        <circle cx="42" cy="47" r="2" fill="${INK}" stroke="none"/>
-        <circle cx="50" cy="47" r="2" fill="${INK}" stroke="none"/>
-        <path d="M43 52 q3 3 6 0" stroke="${INK}" stroke-width="2" fill="none"/>
-        <circle cx="38" cy="50" r="2.6" fill="${BLUSH}" stroke="none"/>
-        <circle cx="54" cy="50" r="2.6" fill="${BLUSH}" stroke="none"/>
-        <circle cx="75" cy="53" r="1.8" fill="${INK}" stroke="none"/>
-        <circle cx="81" cy="53" r="1.8" fill="${INK}" stroke="none"/>
-        <path d="M76 57 q2.5 2.5 5 0" stroke="${INK}" stroke-width="1.8" fill="none"/>` + close;
-      case 'audit': return open + `
-        <rect x="36" y="26" width="48" height="68" rx="7" ${S}/>
-        <path d="M48 18 h24 v10 h-24 z" stroke-width="2.6"/>
-        <path d="M46 46 h20 M46 58 h20 M46 70 h14" stroke-width="2.6"/>
-        <path d="M80 44 l3 7 7 1 -5 5 1 7 -6 -3 -6 3 1 -7 -5 -5 7 -1 z" ${S}/>` + close;
-      case 'law': return open + `
-        <path d="M60 32 v50" stroke-width="3"/>
-        <path d="M40 44 h40" stroke-width="3"/>
-        <path d="M40 44 q-6 14 0 20 q6 -6 0 -20" ${S}/>
-        <path d="M80 44 q6 14 0 20 q-6 -6 0 -20" ${S}/>
-        <circle cx="60" cy="32" r="4" ${S}/>
-        <path d="M40 82 h40" stroke-width="3"/>
-        <circle cx="56" cy="30" r="1.8" fill="${INK}" stroke="none"/>
-        <circle cx="64" cy="30" r="1.8" fill="${INK}" stroke="none"/>
-        <path d="M56 34 q4 3 8 0" stroke="${INK}" stroke-width="2" fill="none"/>` + close;
-      default: return open + `
-        <circle cx="60" cy="62" r="30" ${S}/>
-        <path d="M60 42 v20 l14 9" stroke-width="2.8"/>
-        ${face(60, 56, 0.7)}` + close;
-    }
-  }
-
   const PRI = { '高': 'pri-high', '中': 'pri-mid', '低': 'pri-low' };
   const STAT = { '进行中': 'st-active', '已完成': 'st-done', '已暂停': 'st-pause', '已结案': 'st-closed' };
 
@@ -216,16 +154,24 @@
       if (sa !== sb) return sa - sb;
       return new Date(a.dueDate || 9e15) - new Date(b.dueDate || 9e15);
     });
-    const rows = list.map((t) => `
-      <tr class="${t.status === '已完成' ? 'row-done' : ''}">
-        <td style="width:34px"><label class="chk"><input type="checkbox" data-act="task-toggle" data-id="${t.id}" ${(t.status === '已完成' || t.status === '待审阅') ? 'checked' : ''}><span></span></label></td>
-        <td class="t-title">${esc(t.title)}</td>
-        <td>${fmtDate(t.dueDate)} ${rel(t.dueDate)}</td>
-        <td><span class="st st-${taskStatusClass(t.status)} st-act" data-act="task-status" data-id="${t.id}" title="点击设置状态">${t.status}</span></td>
-        <td class="row-actions"><button class="mini" data-act="task-edit" data-id="${t.id}">编辑</button><button class="mini danger" data-act="task-del" data-id="${t.id}">删</button></td>
-      </tr>`).join('');
-    return `<div class="table-wrap"><table class="tbl"><colgroup><col style="width:34px"><col><col style="width:110px"><col style="width:84px"><col style="width:118px"></colgroup><thead><tr><th></th><th>任务</th><th>截止</th><th>状态</th><th>操作</th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="empty">暂无任务</td></tr>'}</tbody></table></div>`;
+    const cards = list.map((t) => {
+      const isDone = t.status === '已完成';
+      return `<li class="card-pill is-task pri-${PRIORITY_CLASS(t.priority)}${isDone ? ' row-done' : ''}" data-act="task-open" data-id="${t.id}">
+        <label class="chk"><input type="checkbox" data-act="task-toggle" data-id="${t.id}" ${(t.status === '已完成' || t.status === '待审阅') ? 'checked' : ''}><span></span></label>
+        <div class="card-pill-main">
+          <div class="card-pill-title">${esc(t.title)}</div>
+          <div class="card-pill-sub">截止 ${fmtDate(t.dueDate)} ${rel(t.dueDate)}</div>
+        </div>
+        <div class="card-pill-aside"><span class="st st-${taskStatusClass(t.status)} st-act" data-act="task-status" data-id="${t.id}" title="点击设置状态">${t.status}</span></div>
+        <div class="card-pill-actions">
+          <button class="mini" data-act="task-edit" data-id="${t.id}">编辑</button>
+          <button class="mini danger" data-act="task-del" data-id="${t.id}">删</button>
+        </div>
+      </li>`;
+    }).join('');
+    return cards ? `<ul class="card-list">${cards}</ul>` : `<div class="empty"><p>暂无任务</p></div>`;
   }
+  function PRIORITY_CLASS(p) { return p === '高' ? 'high' : (p === '中' ? 'mid' : 'low'); }
 
   function remindersHtml(rem) {
     if (!rem.length) return '<p class="empty">未来 14 天无预警</p>';
@@ -415,16 +361,18 @@
     const cards = list.map((p) => {
       const open = S.listTasks().filter((t) => t.projectId === p.id && t.status !== '已完成').length;
       const expanded = state.projOpenId === p.id;
-      return `<div class="proj-item">
-        <div class="proj-head" data-act="proj-toggle" data-id="${p.id}">
-          <span class="chev">${expanded ? '▾' : '▸'}</span>
-          <span class="st ${STAT[p.status] || ''}">${p.status}</span>
-          <span class="ph-name">${esc(p.name)}</span>
-          ${p.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join('')}
-          <span class="ph-meta">类别 ${esc(p.category || '其他类')} · 待办 ${open}</span>
+      const subBits = [esc(p.category || '其他类'), `${open} 个待办`, p.cause ? esc(p.cause) : null].filter(Boolean);
+      return `<li class="card-pill is-proj" data-act="proj-toggle" data-id="${p.id}">
+        <div class="card-pill-meta"><span class="st ${STAT[p.status] || ''}" style="font-size:var(--fs-xs)">${p.status}</span></div>
+        <div class="card-pill-main">
+          <div class="card-pill-title">${esc(p.name)}</div>
+          <div class="card-pill-sub">${subBits.join(' · ')}${(p.tags || []).length ? ' · ' + p.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join('') : ''}</div>
         </div>
-        ${expanded ? projDetailHtml(p) : ''}
-      </div>`;
+        <div class="card-pill-actions">
+          <button class="mini" data-act="proj-edit" data-id="${p.id}">编辑</button>
+          <button class="mini danger" data-act="proj-del" data-id="${p.id}">删</button>
+        </div>
+      </li>${expanded ? `<li class="proj-detail-wrap"><div class="proj-detail-card">${projDetailHtml(p)}</div></li>` : ''}`;
     }).join('');
     return `
     <div class="toolbar">
@@ -434,7 +382,7 @@
       <select data-act="proj-tag">${['<option value="">全部标签</option>'].concat(tags.map((t) => `<option ${f.tag === t ? 'selected' : ''}>${esc(t)}</option>`)).join('')}</select>
       <button class="btn primary" data-act="proj-new">+ 新建项目</button>
     </div>
-    <div class="proj-list">${cards || `<div class="empty">${illus('projects')}<p>还没有匹配的项目，点击右上角「+ 新建项目」开始登记台账。</p></div>`}</div>`;
+    <ul class="card-list proj-list">${cards || `<li class="empty"><p>还没有匹配的项目，点击右上角「+ 新建项目」开始登记台账。</p></li>`}</ul>`;
   }
   function kv(label, val) { return `<div class="kv"><span class="kv-k">${label}</span><span class="kv-v">${esc(val) || '—'}</span></div>`; }
   function projDetailHtml(p) {
@@ -497,7 +445,7 @@
   function viewReminders() {
     const rem = S.reminders();
     const g = { '高': rem.filter((r) => r.level === '高'), '中': rem.filter((r) => r.level === '中') };
-    if (!rem.length) return `<div class="panel"><div class="empty">${illus('calendar')}<p>未来 14 天暂无预警，安心推进在手事项。</p></div></div>`;
+    if (!rem.length) return `<div class="panel"><div class="empty"><p>未来 14 天暂无预警，安心推进在手事项。</p></div></div>`;
     return `<div class="toolbar"><span class="hint">基于开庭、合同到期、续费与任务截止自动生成，覆盖未来 14 天。</span></div>
     <div class="rem-grid">
       <section class="panel"><h3 class="tt">🔴 高优先预警（${g['高'].length}）</h3>${g['高'].length ? '<ul class="rem-list">' + g['高'].map((r) => `<li class="rem rem-hi"><span class="rem-type">${r.type}</span><span class="rem-proj" data-act="goto-proj" data-id="${r.projectId || ''}">${esc(r.project)}</span><span class="rem-date">${fmtDate(r.date)} ${rel(r.date)}</span></li>`).join('') + '</ul>' : '<p class="empty">无</p>'}</section>
@@ -509,16 +457,46 @@
   function viewPersonnel() {
     const cls = S.listClients();
     const jds = S.listJudges();
-    const cliRows = cls.length ? cls.map((c) => `<tr data-act="cli-open" data-id="${c.id}"><td class="t-title">${esc(c.name)}</td><td>${esc(c.project || '—')}</td><td>${esc(c.company || '—')}</td><td>${esc(c.contact || '—')}</td><td>${esc(c.address || '—')}</td><td>${c.records ? c.records.length : 0} 条</td><td class="row-actions"><button class="mini" data-act="cli-edit" data-id="${c.id}">编辑</button><button class="mini danger" data-act="cli-del" data-id="${c.id}">删</button></td></tr>`).join('') : '<tr><td colspan="6" class="empty">暂无对接人</td></tr>';
-    const judRows = jds.length ? jds.map((j) => `<tr data-act="jud-open" data-id="${j.id}"><td class="t-title">${esc(j.name)}</td><td>${esc(j.case || '—')}</td><td>${esc(j.court || '—')}</td><td>${esc(j.contact || '—')}</td><td>${esc(j.address || '—')}</td><td>${j.records ? j.records.length : 0} 条</td><td class="row-actions"><button class="mini" data-act="jud-edit" data-id="${j.id}">编辑</button><button class="mini danger" data-act="jud-del" data-id="${j.id}">删</button></td></tr>`).join('') : '<tr><td colspan="6" class="empty">暂无经办法官</td></tr>';
+    const cliCards = cls.length ? `<ul class="card-list">${cls.map((c) => `<li class="card-pill" data-act="cli-open" data-id="${c.id}">
+      <div class="card-pill-meta">对接人</div>
+      <div class="card-pill-main">
+        <div class="card-pill-title">${esc(c.name)}</div>
+        <div class="card-pill-sub">${esc(c.project || '未关联项目')}${c.company ? ' · ' + esc(c.company) : ''}</div>
+      </div>
+      <div class="card-pill-aside">
+        <span>${esc(c.contact || '—')}</span>
+        <span style="color:var(--muted);font-size:var(--fs-xs)">${esc(c.address || '—')}</span>
+        <span style="color:var(--muted);font-size:var(--fs-xs)">沟通 ${c.records ? c.records.length : 0} 条</span>
+      </div>
+      <div class="card-pill-actions">
+        <button class="mini" data-act="cli-edit" data-id="${c.id}">编辑</button>
+        <button class="mini danger" data-act="cli-del" data-id="${c.id}">删</button>
+      </div>
+    </li>`).join('')}</ul>` : `<div class="empty"><p>暂无对接人</p></div>`;
+    const judCards = jds.length ? `<ul class="card-list">${jds.map((j) => `<li class="card-pill" data-act="jud-open" data-id="${j.id}">
+      <div class="card-pill-meta">经办法官</div>
+      <div class="card-pill-main">
+        <div class="card-pill-title">${esc(j.name)}</div>
+        <div class="card-pill-sub">${esc(j.case || '未关联案件')}${j.court ? ' · ' + esc(j.court) : ''}</div>
+      </div>
+      <div class="card-pill-aside">
+        <span>${esc(j.contact || '—')}</span>
+        <span style="color:var(--muted);font-size:var(--fs-xs)">${esc(j.address || '—')}</span>
+        <span style="color:var(--muted);font-size:var(--fs-xs)">沟通 ${j.records ? j.records.length : 0} 条</span>
+      </div>
+      <div class="card-pill-actions">
+        <button class="mini" data-act="jud-edit" data-id="${j.id}">编辑</button>
+        <button class="mini danger" data-act="jud-del" data-id="${j.id}">删</button>
+      </div>
+    </li>`).join('')}</ul>` : `<div class="empty"><p>暂无经办法官</p></div>`;
     return `
     <section class="panel">
       <div class="ph"><h3 class="tt">对接人</h3><button class="link" data-act="cli-new">+ 新建对接人</button></div>
-      <div class="table-wrap"><table class="tbl"><thead><tr><th>对接人</th><th>所属项目</th><th>所属公司</th><th>联系方式</th><th>地址</th><th>沟通情况</th><th style="width:120px">操作</th></tr></thead><tbody>${cliRows}</tbody></table></div>
+      ${cliCards}
     </section>
     <section class="panel">
       <div class="ph"><h3 class="tt">经办法官</h3><button class="link" data-act="jud-new">+ 新建经办法官</button></div>
-      <div class="table-wrap"><table class="tbl"><thead><tr><th>经办人</th><th>所属案件</th><th>法院</th><th>联系方式</th><th>地址</th><th>沟通情况</th><th style="width:120px">操作</th></tr></thead><tbody>${judRows}</tbody></table></div>
+      ${judCards}
     </section>`;
   }
   function cliForm(c) { c = c || {}; const projOpts = S.listProjects().map((p) => p.name); return field('name', '对接人', 'text', c.name) + fieldCombo('project', '所属项目', c.project, projOpts, { wide: true }) + field('company', '所属公司', 'text', c.company) + field('contact', '联系方式', 'text', c.contact) + field('address', '地址', 'text', c.address, { wide: true }); }
@@ -549,11 +527,8 @@
     </div>
 
     <section class="panel" style="max-width:960px">
-      <div class="illus-wrap" style="margin-bottom:12px">
-        ${illus('law')}
-        <div><h3 class="tt" style="margin:0">导出二次校验（连接后端数据库）</h3>
-        <span class="hint">先把当前数据同步到真实 SQLite 后端，导出前让后端按台账规则做一致性校验，返回缺失字段、逻辑冲突、孤儿任务等问题清单。</span></div>
-      </div>
+      <h3 class="tt" style="margin:0 0 6px">导出二次校验（连接后端数据库）</h3>
+      <p class="hint" style="margin:0 0 14px">先把当前数据同步到真实 SQLite 后端，导出前让后端按台账规则做一致性校验，返回缺失字段、逻辑冲突、孤儿任务等问题清单。</p>
       <div class="exp-btns">
         <button class="btn primary" data-act="exp-sync">同步到后端数据库</button>
         <button class="btn" data-act="exp-validate">导出前二次校验</button>
