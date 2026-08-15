@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Date>2026-08-16</Date>
+    <Author>WORK-Plat</Author>
+    <Description>WORK-Plat 定期加密云端双向同步（本地 D:\ ⇄ 私有云仓库）</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <CalendarTrigger>
+      <Repetition>
+        <Interval>PT30M</Interval>
+        <Duration>PT24H</Duration>
+        <StopAtDurationEnd>false</StopAtDurationEnd>
+      </Repetition>
+      <StartBoundary>2026-08-16T09:00:00</StartBoundary>
+      <Enabled>true</Enabled>
+    </CalendarTrigger>
+  </Triggers>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <ExecutionTimeLimit>PT10M</ExecutionTimeLimit>
+    <Priority>7</Priority>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>C:\Users\c_lan\.workbuddy\binaries\node\versions\22.22.2\node.exe</Command>
+      <Arguments>"C:\Users\c_lan\workbuddy-ai\Legal Workbench\server\cloud-sync-cli.js"</Arguments>
+      <WorkingDirectory>C:\Users\c_lan\workbuddy-ai\Legal Workbench</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>

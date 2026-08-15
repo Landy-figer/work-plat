@@ -1,0 +1,7 @@
+{
+  "passphrase": "在此填入你的强加密口令（仅本机保存，绝不提交仓库）",
+  "cloudRepo": "你的GitHub用户名/workplat-data",
+  "cloudBranch": "main",
+  "token": "可选：GitHub Personal Access Token（需 repo 权限）；留空则使用 gh 凭据助手",
+  "cloneDir": "D:\\workbuddy\\workplat-cloud"
+}

@@ -1,0 +1,22 @@
+# ===== 本地数据与密钥（绝不提交） =====
+workplat.db
+*.db
+server/workplat.db
+
+# 同步配置（含加密口令，仅本机保存）
+.sync-config.json
+
+# 临时测试脚本
+_smoke*.js
+_t.js
+smoke5.js
+readx.py
+
+# 系统/依赖
+node_modules/
+Thumbs.db
+Desktop.ini
+*.lnk
+
+# WorkBuddy 项目本地数据（记忆/缓存，不提交）
+.workbuddy-ai/

@@ -1,0 +1,736 @@
+/* =====================================================================
+ * WORK-Plat — 个人法务工作台 (app.js)
+ * 路由、工作台合并视图、智能汇报自动解析、项目内联展开、OKLCH 极简主题
+ * ===================================================================== */
+(function (global) {
+  'use strict';
+  const LB = global.LB;
+  const S = LB.store;
+  const $ = (sel, root) => (root || document).querySelector(sel);
+  const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
+  const esc = (s) => ('' + (s == null ? '' : s)).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  /* ===================== 手绘插画（内联 SVG，currentColor 跟随模块色） ===================== */
+  function illus(type) {
+    const open = '<div class="illus deco"><svg viewBox="0 0 120 120" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">';
+    const close = '</svg></div>';
+    const INK = '#514c5a', BLUSH = '#f4b4ba';
+    const face = (cx, cy, s) => `<circle cx="${cx - 6 * s}" cy="${cy}" r="${2.2 * s}" fill="${INK}" stroke="none"/><circle cx="${cx + 6 * s}" cy="${cy}" r="${2.2 * s}" fill="${INK}" stroke="none"/><path d="M${cx - 5 * s} ${cy + 6 * s} q${5 * s} ${5 * s} ${10 * s} 0" stroke="${INK}" stroke-width="${2.3 * s}" fill="none"/><circle cx="${cx - 12 * s}" cy="${cy + 3 * s}" r="${3 * s}" fill="${BLUSH}" stroke="none"/><circle cx="${cx + 12 * s}" cy="${cy + 3 * s}" r="${3 * s}" fill="${BLUSH}" stroke="none"/>`;
+    const S = 'fill="currentColor" fill-opacity=".12"';
+    switch (type) {
+      case 'empty': return open + `
+        <path d="M34 44 l14 -14 14 14 14 -14 14 14 v46 q0 6 -6 6 h-50 q-6 0 -6 -6 z" ${S}/>
+        <path d="M44 58 h32" stroke-width="2.6"/>
+        ${face(64, 54, 0.9)}` + close;
+      case 'projects': return open + `
+        <rect x="30" y="58" width="40" height="30" rx="7" ${S}/>
+        <rect x="40" y="42" width="40" height="30" rx="7" ${S}/>
+        <path d="M40 56 h40" stroke-width="2.6"/>
+        ${face(60, 50, 0.8)}` + close;
+      case 'calendar': return open + `
+        <rect x="28" y="36" width="64" height="60" rx="9" ${S}/>
+        <path d="M28 52 h64" stroke-width="2.6"/>
+        <path d="M44 28 v10 M76 28 v10" stroke-width="2.6"/>
+        ${face(60, 66, 0.8)}` + close;
+      case 'export': return open + `
+        <rect x="32" y="30" width="40" height="44" rx="8" ${S}/>
+        <path d="M44 40 v22 M44 58 l-8 -8 M44 58 l8 -8" stroke-width="3"/>
+        <path d="M26 92 h68" stroke-width="2.6"/>
+        <path d="M34 84 h52 l-5 10 h-42 z" ${S}/>` + close;
+      case 'personnel': return open + `
+        <circle cx="46" cy="48" r="13" ${S}/>
+        <path d="M26 90 q2 -22 20 -22 q18 0 20 22" ${S}/>
+        <circle cx="78" cy="54" r="11" ${S}/>
+        <path d="M64 90 q1 -18 14 -18 q13 0 14 18" ${S}/>
+        <circle cx="42" cy="47" r="2" fill="${INK}" stroke="none"/>
+        <circle cx="50" cy="47" r="2" fill="${INK}" stroke="none"/>
+        <path d="M43 52 q3 3 6 0" stroke="${INK}" stroke-width="2" fill="none"/>
+        <circle cx="38" cy="50" r="2.6" fill="${BLUSH}" stroke="none"/>
+        <circle cx="54" cy="50" r="2.6" fill="${BLUSH}" stroke="none"/>
+        <circle cx="75" cy="53" r="1.8" fill="${INK}" stroke="none"/>
+        <circle cx="81" cy="53" r="1.8" fill="${INK}" stroke="none"/>
+        <path d="M76 57 q2.5 2.5 5 0" stroke="${INK}" stroke-width="1.8" fill="none"/>` + close;
+      case 'audit': return open + `
+        <rect x="36" y="26" width="48" height="68" rx="7" ${S}/>
+        <path d="M48 18 h24 v10 h-24 z" stroke-width="2.6"/>
+        <path d="M46 46 h20 M46 58 h20 M46 70 h14" stroke-width="2.6"/>
+        <path d="M80 44 l3 7 7 1 -5 5 1 7 -6 -3 -6 3 1 -7 -5 -5 7 -1 z" ${S}/>` + close;
+      case 'law': return open + `
+        <path d="M60 32 v50" stroke-width="3"/>
+        <path d="M40 44 h40" stroke-width="3"/>
+        <path d="M40 44 q-6 14 0 20 q6 -6 0 -20" ${S}/>
+        <path d="M80 44 q6 14 0 20 q-6 -6 0 -20" ${S}/>
+        <circle cx="60" cy="32" r="4" ${S}/>
+        <path d="M40 82 h40" stroke-width="3"/>
+        <circle cx="56" cy="30" r="1.8" fill="${INK}" stroke="none"/>
+        <circle cx="64" cy="30" r="1.8" fill="${INK}" stroke="none"/>
+        <path d="M56 34 q4 3 8 0" stroke="${INK}" stroke-width="2" fill="none"/>` + close;
+      default: return open + `
+        <circle cx="60" cy="62" r="30" ${S}/>
+        <path d="M60 42 v20 l14 9" stroke-width="2.8"/>
+        ${face(60, 56, 0.7)}` + close;
+    }
+  }
+
+  const PRI = { '高': 'pri-high', '中': 'pri-mid', '低': 'pri-low' };
+  const STAT = { '进行中': 'st-active', '已完成': 'st-done', '已暂停': 'st-pause', '已结案': 'st-closed' };
+
+  function fmtDate(iso) { if (!iso) return '—'; const d = new Date(iso); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  function fmtDT(iso) { if (!iso) return '—'; const d = new Date(iso); return fmtDate(iso) + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
+  function daysLeft(iso) { if (!iso) return null; const t = new Date(); t.setHours(0, 0, 0, 0); const d = new Date(iso); d.setHours(0, 0, 0, 0); return Math.round((d - t) / 86400000); }
+  function rel(iso) { const n = daysLeft(iso); if (n == null) return ''; if (n === 0) return '<span class="rel today">今天</span>'; if (n < 0) return '<span class="rel overdue">逾期' + (-n) + '天</span>'; if (n === 1) return '<span class="rel soon">明天</span>'; return '<span class="rel">剩' + n + '天</span>'; }
+
+  const state = {
+    view: 'dashboard', calMode: 'week', calDate: new Date(),
+    projFilter: { q: '', status: '', cause: '', tag: '' }, projOpenId: null,
+    reportPreview: null, lastAppliedRaw: '', rpStatus: '', lawQ: '', validateHtml: ''
+  };
+  let rpTimer = null;
+
+  /* ===================== 导航 ===================== */
+  const NAV = [
+    { id: 'dashboard', label: '工作台', icon: '▦', c: 'oklch(62% 0.052 240)', title: '工作台' },
+    { id: 'calendar', label: '日程管理', icon: '◷', c: 'oklch(59% 0.050 155)', title: '日程管理' },
+    { id: 'projects', label: '项目管理', icon: '▤', c: 'oklch(61% 0.058 45)', title: '项目管理' },
+    { id: 'personnel', label: '人员管理', icon: '☺', c: 'oklch(69% 0.058 80)', title: '人员管理' },
+    { id: 'export', label: '数据导出', icon: '⇩', c: 'oklch(62% 0.048 200)', title: '数据导出' }
+  ];
+  const NAVC = { dashboard: 'oklch(62% 0.052 240)', calendar: 'oklch(59% 0.050 155)', projects: 'oklch(61% 0.058 45)', personnel: 'oklch(69% 0.058 80)', export: 'oklch(62% 0.048 200)' };
+
+  function navigate(v) { state.view = v; state.reportPreview = null; render(); }
+
+  function render() {
+    $('#nav').innerHTML = NAV.map((n) => {
+      const active = state.view === n.id;
+      const st = active ? `background:${n.c};color:#fff;border-color:transparent;` : '';
+      return `<button class="nav-item ${active ? 'active' : ''}" data-view="${n.id}" style="${st}"><span class="ni" style="background:${active ? '#fff' : n.c}"></span><span>${n.label}</span></button>`;
+    }).join('');
+    const nv = NAV.find((n) => n.id === state.view) || NAV[0];
+    const vt = $('#view-title'); vt.textContent = nv.title; vt.className = 'tt';
+    const view = $('#view'); view.style.setProperty('--mc', NAVC[state.view] || NAVC.dashboard);
+    if (state.view === 'dashboard') view.innerHTML = viewDashboard();
+    else if (state.view === 'calendar') view.innerHTML = viewCalendar();
+    else if (state.view === 'projects') view.innerHTML = viewProjects();
+    else     if (state.view === 'personnel') view.innerHTML = viewPersonnel();
+    else if (state.view === 'export') view.innerHTML = viewExport();
+    else if (state.view === 'reminders') view.innerHTML = viewReminders();
+    bindView();
+    $('.view-scroll').scrollTop = 0;
+  }
+
+  /* ===================== Modal ===================== */
+  function openModal(title, bodyHtml, onSave, opts) {
+    opts = opts || {};
+    $('#modal-title').textContent = title;
+    $('#modal-body').innerHTML = bodyHtml;
+    $('#modal').classList.add('open');
+    const saveBtn = $('#modal-save');
+    saveBtn.style.display = opts.readonly ? 'none' : '';
+    saveBtn.onclick = () => { if (onSave) onSave(collectForm()); };
+    $('#modal-cancel').onclick = closeModal;
+  }
+  function closeModal() { $('#modal').classList.remove('open'); }
+  function collectForm() { const o = {}; $$('#modal-body [data-field]').forEach((inp) => { o[inp.dataset.field] = inp.type === 'checkbox' ? inp.checked : inp.value; }); return o; }
+  function field(name, label, type, val, opts) {
+    opts = opts || {}; val = val == null ? '' : val;
+    let ctrl;
+    if (type === 'textarea') ctrl = `<textarea data-field="${name}" rows="${opts.rows || 3}" placeholder="${opts.ph || ''}">${esc(val)}</textarea>`;
+    else if (type === 'select') ctrl = `<select data-field="${name}">${opts.options.map((o) => `<option value="${esc(o)}" ${o === val ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+    else if (type === 'date') ctrl = `<input data-field="${name}" type="date" value="${esc(val)}">`;
+    else if (type === 'datetime') ctrl = `<input data-field="${name}" type="datetime-local" value="${esc(val)}">`;
+    else ctrl = `<input data-field="${name}" type="text" value="${esc(val)}" placeholder="${opts.ph || ''}"${opts.list ? ` list="${opts.list}"` : ''}>`;
+    return `<label class="fld ${opts.wide ? 'wide' : ''}"><span>${label}</span>${ctrl}</label>`;
+  }
+
+  /* 组合框：从已有项目下拉选择，同时允许手动输入自定义内容 */
+  function fieldCombo(key, label, value, options, extra) {
+    const listId = 'combo_' + key;
+    const dl = `<datalist id="${listId}">${(options || []).map((o) => `<option value="${esc(o)}">`).join('')}</datalist>`;
+    return field(key, label, 'text', value, Object.assign({ list: listId }, extra || {})) + dl;
+  }
+
+  /* ===================== 工作台（合并：智能汇报 + 任务 + 提醒） ===================== */
+  function viewDashboard() {
+    // 任务提醒与任务管理去重：任务截止类提醒已展示在上方任务管理表中，此处仅保留开庭/合同到期/续费等事件型提醒
+    const rem = S.reminders().filter((r) => r.type !== '任务截止').slice(0, 6);
+    return `
+    <div class="dash-cols">
+      <section class="panel">
+        <div class="ph"><h3 class="tt">任务管理</h3><button class="link" data-act="task-new">+ 新建任务</button></div>
+        ${taskTableHtml(S.listTasks().filter((t) => t.status !== '已完成'))}
+      </section>
+      <section class="panel">
+        <div class="ph"><h3 class="tt">任务提醒</h3><button class="link" data-act="goto-reminders">查看全部</button></div>
+        ${remindersHtml(rem)}
+      </section>
+    </div>
+
+    <section class="panel report-card">
+      <textarea id="report-text" rows="4" placeholder="例：百高项目债权处置 明天提交处置进展报告，8月20日开庭&#10;例：新建项目 盈基大厦续封，债权持有人百高，对方当事人债务人，案由保全&#10;例：本周已向法庭提交质证意见；待法院出具裁决"></textarea>
+      <div class="rp-bar">
+        <button class="btn primary" data-act="report-apply">确认</button>
+        <span class="rp-status">${state.rpStatus ? esc(state.rpStatus) : '等待输入…'}</span>
+      </div>
+      <div id="rp-preview" class="rp-preview">${state.reportPreview ? reportPreviewHtml(state.reportPreview) : ''}</div>
+    </section>`;
+  }
+  function reportPreviewHtml(p) {
+    if (!p) return '';
+    const warns = [];
+    if (p.progress && !p.matchedProject && !p.createProject) warns.push('未匹配到项目且无“新建项目”，进展将不会被记录');
+    return `<ul class="rp-sum">${p.summary.map((s) => `<li>${esc(s)}</li>`).join('')}</ul>${warns.length ? '<div class="rp-warn">⚠ ' + warns.join('；') + '</div>' : ''}`;
+  }
+  function updPreview() { const el = $('#rp-preview'); if (el) el.innerHTML = reportPreviewHtml(state.reportPreview); }
+
+  function applyReport() {
+    const ta = $('#report-text'); if (!ta) return;
+    const text = ta.value; if (!text.trim()) return;
+    const parsed = (state.reportPreview && state.reportPreview.raw === text) ? state.reportPreview : LB.nlp.parse(text);
+    LB.nlp.apply(parsed);
+    state.reportPreview = null; state.lastAppliedRaw = text;
+    state.rpStatus = '✓ 已更新：' + parsed.summary.join('；');
+    if (ta) ta.value = '';
+    render();
+  }
+
+  function taskStatusClass(s) { return s === '已完成' ? 'done' : s === '待审阅' ? 'review' : 'todo'; }
+  function taskTableHtml(tasks) {
+    const list = tasks.slice();
+    const order = { '待办': 0, '待审阅': 1, '已完成': 2 };
+    list.sort((a, b) => {
+      const sa = order[a.status] != null ? order[a.status] : 0, sb = order[b.status] != null ? order[b.status] : 0;
+      if (sa !== sb) return sa - sb;
+      return new Date(a.dueDate || 9e15) - new Date(b.dueDate || 9e15);
+    });
+    const rows = list.map((t) => `
+      <tr class="${t.status === '已完成' ? 'row-done' : ''}">
+        <td style="width:34px"><label class="chk"><input type="checkbox" data-act="task-toggle" data-id="${t.id}" ${(t.status === '已完成' || t.status === '待审阅') ? 'checked' : ''}><span></span></label></td>
+        <td class="t-title">${esc(t.title)}</td>
+        <td>${fmtDate(t.dueDate)} ${rel(t.dueDate)}</td>
+        <td><span class="st st-${taskStatusClass(t.status)} st-act" data-act="task-status" data-id="${t.id}" title="点击设置状态">${t.status}</span></td>
+        <td class="row-actions"><button class="mini" data-act="task-edit" data-id="${t.id}">编辑</button><button class="mini danger" data-act="task-del" data-id="${t.id}">删</button></td>
+      </tr>`).join('');
+    return `<div class="table-wrap"><table class="tbl"><thead><tr><th style="width:34px"></th><th>任务</th><th>截止</th><th>状态</th><th style="width:120px">操作</th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="empty">暂无任务</td></tr>'}</tbody></table></div>`;
+  }
+
+  function remindersHtml(rem) {
+    if (!rem.length) return '<p class="empty">未来 14 天无预警</p>';
+    return `<ul class="rem-list">${rem.map((r) => `<li class="rem rem-${r.level === '高' ? 'hi' : 'mid'}"><span class="rem-type">${r.type}</span><span class="rem-proj" data-act="goto-proj" data-id="${r.projectId || ''}">${esc(r.project)}</span><span class="rem-date">${fmtDate(r.date)} ${rel(r.date)}</span></li>`).join('')}</ul>`;
+  }
+
+  /* ===================== 日程管理（周/月 + 冲突检测） ===================== */
+  function viewCalendar() {
+    const evts = S.deriveEvents();
+    const conflicts = detectConflicts(evts);
+    let body, label;
+    if (state.calMode === 'week') { const r = weekView(state.calDate, evts, conflicts); body = r.html; label = r.label; }
+    else { const r = monthView(state.calDate, evts); body = r.html; label = r.label; }
+    return `
+    <div class="toolbar cal-bar">
+      <div class="cal-nav"><button class="btn" data-act="cal-prev">‹</button><button class="btn" data-act="cal-today">今天</button><button class="btn" data-act="cal-next">›</button><strong class="cal-label">${label}</strong></div>
+      <div class="seg"><button class="seg-btn ${state.calMode === 'week' ? 'on' : ''}" data-act="cal-week">周视图</button><button class="seg-btn ${state.calMode === 'month' ? 'on' : ''}" data-act="cal-month">月视图</button></div>
+      <button class="btn primary" data-act="evt-new">+ 新建日程</button>
+    </div>
+    ${conflicts.length ? `<div class="conflict-banner">⚠ 检测到 ${conflicts.length} 处日程冲突：${conflicts.map((c) => esc(c.aTitle) + ' × ' + esc(c.bTitle)).join('；')}</div>` : ''}
+    <div class="cal-body">${body}</div>`;
+  }
+  function startOfWeek(d) { const x = new Date(d); const day = (x.getDay() + 6) % 7; x.setDate(x.getDate() - day); x.setHours(0, 0, 0, 0); return x; }
+  function weekView(ref, evts, conflicts) {
+    const start = startOfWeek(ref);
+    const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(start); d.setDate(d.getDate() + i); return d; });
+    const hours = Array.from({ length: 7 }, (_, i) => 8 + i * 2);
+    const label = fmtDate(start.toISOString()) + ' ~ ' + fmtDate(days[6].toISOString());
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const head = days.map((d) => { const isT = d.getTime() === today.getTime(); return `<div class="wk-head ${isT ? 'istoday' : ''}"><span class="wk-dow">${['一', '二', '三', '四', '五', '六', '日'][d.getDay() === 0 ? 6 : d.getDay() - 1]}</span><span class="wk-dn">${d.getDate()}</span></div>`; }).join('');
+    let grid = '';
+    days.forEach((d) => {
+      const dayKey = d.toDateString();
+      const dayEvents = evts.filter((e) => new Date(e.start).toDateString() === dayKey);
+      const allDay = dayEvents.filter((e) => e.allDay);
+      const timed = dayEvents.filter((e) => !e.allDay);
+      let cells = hours.map((h) => {
+        const items = timed.filter((e) => Math.floor(new Date(e.start).getHours() / 2) * 2 === h);
+        return `<div class="wk-cell">${items.map((e) => `<div class="evt evt-${e.kind} ${isConf(e, conflicts) ? 'conf' : ''}" data-act="evt-open" data-id="${e.id}" data-kind="${e.kind}" data-ref="${e.refId || ''}"><span class="evt-t">${String(new Date(e.start).getHours()).padStart(2, '0')}:${String(new Date(e.start).getMinutes()).padStart(2, '0')}</span>${esc(e.title)}</div>`).join('')}</div>`;
+      }).join('');
+      grid += `<div class="wk-col"><div class="wk-allday">${allDay.map((e) => `<div class="evt evt-${e.kind}" data-act="evt-open" data-id="${e.id}" data-kind="${e.kind}" data-ref="${e.refId || ''}">${esc(e.title)}</div>`).join('')}</div><div class="wk-hours">${cells}</div></div>`;
+    });
+    return { html: `<div class="wk-head-row"><div class="wk-corner"></div>${head}</div><div class="wk-scroll"><div class="wk-times"><div class="wk-spad"></div>${hours.map((h) => `<div class="wk-time">${String(h).padStart(2, '0')}:00</div>`).join('')}</div><div class="wk-grid">${grid}</div></div><div class="wk-legend">图例：<span class="lg"><i class="lg-task"></i>任务</span><span class="lg"><i class="lg-hearing"></i>开庭</span><span class="lg"><i class="lg-contract"></i>合同到期</span><span class="lg"><i class="lg-renewal"></i>续费</span><span class="lg"><i class="lg-manual"></i>手动日程</span>${conflicts.length ? '<span class="lg"><i class="lg-conf"></i>冲突</span>' : ''}</div>`, label };
+  }
+  function isConf(e, conflicts) { return conflicts.some((c) => c.a === e.id || c.b === e.id); }
+  function monthView(ref, evts) {
+    const y = ref.getFullYear(), m = ref.getMonth();
+    const first = new Date(y, m, 1); const start = startOfWeek(first);
+    const label = y + '年' + (m + 1) + '月';
+    let cells = '';
+    for (let i = 0; i < 42; i++) {
+      const d = new Date(start); d.setDate(d.getDate() + i);
+      const inMonth = d.getMonth() === m; const today = new Date(); today.setHours(0, 0, 0, 0); const isT = d.getTime() === today.getTime();
+      const dayEvents = evts.filter((e) => new Date(e.start).toDateString() === d.toDateString());
+      cells += `<div class="mc ${inMonth ? '' : 'out'} ${isT ? 'istoday' : ''}"><div class="mc-d">${d.getDate()}</div>${dayEvents.slice(0, 3).map((e) => `<div class="evt evt-${e.kind} sm" data-act="evt-open" data-id="${e.id}" data-kind="${e.kind}" data-ref="${e.refId || ''}">${esc(e.title)}</div>`).join('')}${dayEvents.length > 3 ? '<div class="mc-more">+' + (dayEvents.length - 3) + '</div>' : ''}</div>`;
+    }
+    return { html: `<div class="mc-grid">${cells}</div>`, label };
+  }
+  function detectConflicts(evts) {
+    const out = []; const timed = evts.filter((e) => !e.allDay && e.start);
+    for (let i = 0; i < timed.length; i++) for (let j = i + 1; j < timed.length; j++) {
+      const a = timed[i], b = timed[j];
+      if (new Date(a.start).toDateString() !== new Date(b.start).toDateString()) continue;
+      const as = new Date(a.start), ae = a.end ? new Date(a.end) : new Date(as.getTime() + 3600000);
+      const bs = new Date(b.start), be = b.end ? new Date(b.end) : new Date(bs.getTime() + 3600000);
+      if (as < be && bs < ae) out.push({ a: a.id, b: b.id, aTitle: a.title, bTitle: b.title });
+    }
+    return out;
+  }
+
+  /* ===================== 项目管理（schema 驱动的通用模板 + 类别扩展） =====================
+   * 设计原则：
+   *  1) 通用字段模块（PROJ_GENERIC_MODULES）适用于所有类别，不假设任何特定角色（如债权人）。
+   *  2) 类别模板（PROJ_CATEGORY_TEMPLATES）只扩展本类别专属字段，绝不重复通用字段。
+   *  3) 详情/表单/解析均由 projectModules(p) 统一驱动，新增类别只需在下面加一个模板。
+   * 字段描述符：{ key, label, type:'text'|'date'|'datetime'|'textarea'|'select', options?, wide?, rows?, ph? }
+   */
+  const PROJ_CATEGORIES = ['诉讼类', '执行类', '破产类', '其他类'];
+
+  // —— 通用模块（所有项目共享）——
+  const PROJ_GENERIC_MODULES = [
+    { section: '基础信息', fields: [
+      { key: 'name', label: '项目名称', type: 'text', wide: true, ph: '如：百高项目债权处置' },
+      { key: 'status', label: '状态', type: 'select', options: ['进行中', '已暂停', '已完成', '已结案'] },
+      { key: 'category', label: '项目类别', type: 'select', options: PROJ_CATEGORIES },
+      { key: 'tags', label: '标签（逗号分隔）', type: 'text', wide: true },
+      { key: 'otherNotes', label: '其他备注', type: 'textarea', wide: true, rows: 2 }
+    ] },
+    { section: '当事人信息', fields: [
+      { key: 'party', label: '当事人（我方委托人）', type: 'text' },
+      { key: 'opponent', label: '对方当事人', type: 'text' },
+      { key: 'contact', label: '对接人', type: 'text' },
+      { key: 'contactContact', label: '对接人联系方式', type: 'text' }
+    ] },
+    { section: '合同信息', fields: [
+      { key: 'contractLawyer', label: '代理合同及代理律师', type: 'text', wide: true },
+      { key: 'contractName', label: '合同名称', type: 'text' },
+      { key: 'contractNo', label: '合同编号', type: 'text' },
+      { key: 'cause', label: '案由', type: 'text' },
+      { key: 'signDate', label: '签约时间', type: 'date' }
+    ] },
+    { section: '费用信息', fields: [
+      { key: 'feeUpfront', label: '律师费（前期/固定）', type: 'text' },
+      { key: 'feeLater', label: '律师费（后期）', type: 'text' },
+      { key: 'feePayment', label: '付款情况', type: 'text', wide: true },
+      { key: 'feeExtraction', label: '提取情况', type: 'text', wide: true },
+      { key: 'transferTime', label: '转付时间', type: 'date' },
+      { key: 'transferAmount', label: '转付金额', type: 'text' }
+    ] },
+    { section: '查封与保全信息', fields: [
+      { key: 'collateral', label: '抵质押物', type: 'text', wide: true },
+      { key: 'seizedItem', label: '查封物', type: 'text' },
+      { key: 'seizureStart', label: '查封起算日', type: 'date' },
+      { key: 'seizureEnd', label: '查封截止日', type: 'date' }
+    ] },
+    { section: '时间节点', fields: [
+      { key: 'hearingDate', label: '开庭日期', type: 'datetime' },
+      { key: 'contractExpiryDate', label: '合同到期日', type: 'date' },
+      { key: 'renewalDate', label: '续费提醒日', type: 'date' }
+    ] },
+    { section: '关联案件', fields: [
+      { key: 'relatedCases', label: '涉及/关联案件', type: 'text', wide: true },
+      { key: 'caseNo', label: '案号', type: 'text' }
+    ] },
+    { section: '进展与交接', fields: [
+      { key: 'todo', label: '待办', type: 'textarea', wide: true, rows: 2 },
+      { key: 'handover', label: '交接方案', type: 'textarea', wide: true, rows: 2 }
+    ] }
+  ];
+
+  // —— 类别专属模板（仅扩展本类别字段，不重复通用模块）——
+  const PROJ_CATEGORY_TEMPLATES = {
+    '诉讼类': { modules: [
+      { section: '诉讼要素', fields: [
+        { key: 'stage', label: '诉讼阶段', type: 'select', options: ['一审', '二审', '再审', '执行阶段'] },
+        { key: 'court', label: '管辖法院/机构', type: 'text', wide: true },
+        { key: 'claim', label: '诉讼请求', type: 'textarea', wide: true, rows: 2 },
+        { key: 'limitation', label: '诉讼时效届满日', type: 'date' },
+        { key: 'evidence', label: '证据清单', type: 'textarea', wide: true, rows: 2 }
+      ] }
+    ] },
+    '执行类': { modules: [
+      { section: '执行要素', fields: [
+        { key: 'execCourt', label: '执行法院', type: 'text', wide: true },
+        { key: 'execCaseNo', label: '执行案号', type: 'text' },
+        { key: 'applicant', label: '申请执行人', type: 'text' },
+        { key: 'executed', label: '被执行人', type: 'text' },
+        { key: 'execObject', label: '执行标的', type: 'text', wide: true },
+        { key: 'assetClue', label: '财产线索', type: 'textarea', wide: true, rows: 2 },
+        { key: 'execStatus', label: '执行状态', type: 'select', options: ['立案', '网络查控', '财产处置/拍卖', '终本', '结案'] },
+        { key: 'recovered', label: '已执行到位金额', type: 'text' }
+      ] }
+    ] },
+    '破产类': { modules: [
+      { section: '破产要素', fields: [
+        { key: 'creditor', label: '债权持有人', type: 'text' },
+        { key: 'debtor', label: '债务人', type: 'text' },
+        { key: 'admin', label: '管理人', type: 'text' },
+        { key: 'claimAmount', label: '债权金额', type: 'text' },
+        { key: 'bankruptcyStage', label: '破产阶段', type: 'select', options: ['申请', '受理', '重整', '和解', '清算', '结案'] }
+      ] }
+    ] },
+    '其他类': { modules: [] }
+  };
+
+  function projectModules(p) {
+    const cat = (p && p.category) || '其他类';
+    const tpl = PROJ_CATEGORY_TEMPLATES[cat] || PROJ_CATEGORY_TEMPLATES['其他类'];
+    return PROJ_GENERIC_MODULES.concat(tpl.modules);
+  }
+  function projectField(f, p) {
+    let val = p ? p[f.key] : '';
+    if (f.type === 'date' && val) val = ('' + val).slice(0, 10);
+    if (f.type === 'datetime' && val) val = ('' + val).slice(0, 16);
+    const opts = f.options ? { options: f.options } : {};
+    const wide = f.wide ? { wide: true } : {};
+    const rows = f.rows ? { rows: f.rows } : {};
+    const ph = f.ph ? { ph: f.ph } : {};
+    return field(f.label, f.key, f.type, val, Object.assign({}, wide, opts, rows, ph));
+  }
+  function formatFieldValue(v, type) {
+    if (v == null || v === '') return '';
+    if (type === 'date' || type === 'datetime') return fmtDate(v);
+    return v;
+  }
+  // 对外暴露 schema（通用结构即一等公民：新增类别只需在 PROJ_CATEGORY_TEMPLATES 加模板）
+  LB.projectSchema = { categories: PROJ_CATEGORIES, genericModules: PROJ_GENERIC_MODULES, categoryTemplates: PROJ_CATEGORY_TEMPLATES, modules: projectModules };
+
+  function viewProjects() {
+    const f = state.projFilter;
+    let list = S.listProjects();
+    if (f.q) list = list.filter((p) => (p.name + (p.party || '') + (p.opponent || '') + (p.caseNo || '') + (p.cause || '') + (p.contractLawyer || '') + (p.category || '')).toLowerCase().indexOf(f.q.toLowerCase()) >= 0);
+    if (f.status) list = list.filter((p) => p.status === f.status);
+    if (f.cause) list = list.filter((p) => p.cause === f.cause);
+    if (f.tag) list = list.filter((p) => (p.tags || []).indexOf(f.tag) >= 0);
+    list.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+    const causes = Array.from(new Set(S.listProjects().map((p) => p.cause).filter(Boolean)));
+    const tags = Array.from(new Set(S.listProjects().flatMap((p) => p.tags || [])));
+    const cards = list.map((p) => {
+      const open = S.listTasks().filter((t) => t.projectId === p.id && t.status !== '已完成').length;
+      const expanded = state.projOpenId === p.id;
+      return `<div class="proj-item">
+        <div class="proj-head" data-act="proj-toggle" data-id="${p.id}">
+          <span class="chev">${expanded ? '▾' : '▸'}</span>
+          <span class="st ${STAT[p.status] || ''}">${p.status}</span>
+          <span class="ph-name">${esc(p.name)}</span>
+          ${p.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join('')}
+          <span class="ph-meta">类别 ${esc(p.category || '其他类')} · 待办 ${open}</span>
+        </div>
+        ${expanded ? projDetailHtml(p) : ''}
+      </div>`;
+    }).join('');
+    return `
+    <div class="toolbar">
+      <input class="search" data-act="proj-q" placeholder="搜索项目/债权人/对方/案号…" value="${esc(f.q)}">
+      <select data-act="proj-status">${['<option value="">全部状态</option>'].concat(['进行中', '已暂停', '已完成', '已结案'].map((s) => `<option ${f.status === s ? 'selected' : ''}>${s}</option>`)).join('')}</select>
+      <select data-act="proj-cause">${['<option value="">全部案由</option>'].concat(causes.map((c) => `<option ${f.cause === c ? 'selected' : ''}>${esc(c)}</option>`)).join('')}</select>
+      <select data-act="proj-tag">${['<option value="">全部标签</option>'].concat(tags.map((t) => `<option ${f.tag === t ? 'selected' : ''}>${esc(t)}</option>`)).join('')}</select>
+      <button class="btn primary" data-act="proj-new">+ 新建项目</button>
+    </div>
+    <div class="proj-list">${cards || `<div class="empty">${illus('projects')}<p>还没有匹配的项目，点击右上角「+ 新建项目」开始登记台账。</p></div>`}</div>`;
+  }
+  function kv(label, val) { return `<div class="kv"><span class="kv-k">${label}</span><span class="kv-v">${esc(val) || '—'}</span></div>`; }
+  function projDetailHtml(p) {
+    const tasks = S.listTasks().filter((t) => t.projectId === p.id);
+    const mods = projectModules(p);
+    const secHtml = mods.map((m) => `<div><div class="kv-sec">${m.section}</div>${m.fields.map((f) => kv(f.label, formatFieldValue(p[f.key], f.type))).join('')}</div>`).join('');
+    const docsHtml = (p.docs && p.docs.length) ? p.docs.map((d, i) => `<li><span class="prog-d">${esc(d.date || '')}</span><span class="prog-c">${esc(d.name)}</span><span class="prog-a">${esc(d.note || '')} · ${esc(d.by || '')} <button class="mini danger" data-act="proj-deldoc" data-id="${p.id}" data-doc="${i}">删</button></span></li>`).join('') : '<li class="empty">暂无文书</li>';
+    return `<div class="proj-detail">
+      <div class="kv-grid">${secHtml}</div>
+      <div class="kv-sec">文书材料</div>
+      <ul class="prog">${docsHtml}</ul>
+      <div class="kv-sec">进展状态</div>
+      <ul class="prog">${(p.progress || []).map((x) => `<li><span class="prog-d">${esc(x.date)}</span><span class="prog-c">${esc(x.content)}</span><span class="prog-a">${esc(x.author)}</span></li>`).join('') || '<li class="empty">暂无进展</li>'}</ul>
+      <div class="kv-sec">关联任务</div>
+      <ul class="prog">${tasks.map((t) => `<li><span class="prog-d">${fmtDate(t.dueDate)}</span><span class="prog-c">${esc(t.title)}</span><span class="prog-a"><span class="st st-${taskStatusClass(t.status)} st-act" data-act="task-status" data-id="${t.id}">${t.status}</span></span></li>`).join('') || '<li class="empty">暂无任务</li>'}</ul>
+      <div class="ph"><button class="mini" data-act="proj-addtask" data-id="${p.id}">+ 任务</button><button class="mini" data-act="proj-addprog" data-id="${p.id}">+ 进展</button><button class="mini" data-act="proj-edit" data-id="${p.id}">编辑</button><button class="mini danger" data-act="proj-del" data-id="${p.id}">删除</button></div>
+    </div>`;
+  }
+  function projForm(p) {
+    p = p || {};
+    const mods = projectModules(p);
+    const secs = mods.map((m) => `<div class="form-sec"><div class="kv-sec">${m.section}</div><div class="form-grid">${m.fields.map((f) => projectField(f, p)).join('')}</div></div>`).join('');
+    const docsSec = `<div class="form-sec"><div class="kv-sec">文书材料（本次新增，留空忽略）</div><div class="form-grid">${field('docName', '文书名称', 'text', '')}${field('docNote', '说明', 'text', '', { wide: true })}</div></div>`;
+    const progSec = `<div class="form-sec"><div class="kv-sec">进展状态（本次新增，留空忽略）</div><div class="form-grid">${field('progressNote', '本次进展', 'textarea', '', { wide: true, rows: 2 })}</div></div>`;
+    return secs + docsSec + progSec;
+  }
+  function openProjForm(id, draft) {
+    const base = id ? S.getProject(id) : {};
+    const p = Object.assign({}, base, draft || {});
+    if (!p.category) p.category = '其他类';
+    const cat = p.category;
+    openModal(id ? '编辑项目（' + cat + '）' : '新建项目（登记台账）', projForm(p), (v) => {
+      const c = v.category || '其他类';
+      const tpl = PROJ_CATEGORY_TEMPLATES[c] || PROJ_CATEGORY_TEMPLATES['其他类'];
+      const allFields = PROJ_GENERIC_MODULES.concat(tpl.modules).reduce((a, m) => a.concat(m.fields), []);
+      const data = {};
+      allFields.forEach((f) => {
+        let val = v[f.key];
+        if (f.type === 'date' || f.type === 'datetime') val = val ? new Date(val).toISOString() : null;
+        else val = (val == null ? '' : val);
+        data[f.key] = val;
+      });
+      data.name = data.name || (base && base.name) || '未命名项目';
+      data.tags = v.tags ? v.tags.split(/[,，]/).map((s) => s.trim()).filter(Boolean) : (base ? base.tags : []);
+      data.docs = (base && base.docs) ? base.docs.slice() : [];
+      data.progress = (base && base.progress) ? base.progress.slice() : [];
+      if (id) { data.id = id; S.saveProject(data, false); }
+      else { S.saveProject(data, true); }
+      const pid = id || data.id;
+      if (v.docName) S.addDoc(pid, { name: v.docName, note: v.docNote });
+      if (v.progressNote) S.addProgress(pid, { content: v.progressNote });
+      closeModal(); render();
+    });
+    const sel = $('#modal-body [data-field="category"]');
+    if (sel) sel.onchange = () => openProjForm(id, collectForm());
+  }
+  function bindProjForm(id) { openProjForm(id, null); }
+
+  /* ===================== 智能提醒（独立视图） ===================== */
+  function viewReminders() {
+    const rem = S.reminders();
+    const g = { '高': rem.filter((r) => r.level === '高'), '中': rem.filter((r) => r.level === '中') };
+    if (!rem.length) return `<div class="panel"><div class="empty">${illus('calendar')}<p>未来 14 天暂无预警，安心推进在手事项。</p></div></div>`;
+    return `<div class="toolbar"><span class="hint">基于开庭、合同到期、续费与任务截止自动生成，覆盖未来 14 天。</span></div>
+    <div class="rem-grid">
+      <section class="panel"><h3 class="tt">🔴 高优先预警（${g['高'].length}）</h3>${g['高'].length ? '<ul class="rem-list">' + g['高'].map((r) => `<li class="rem rem-hi"><span class="rem-type">${r.type}</span><span class="rem-proj" data-act="goto-proj" data-id="${r.projectId || ''}">${esc(r.project)}</span><span class="rem-date">${fmtDate(r.date)} ${rel(r.date)}</span></li>`).join('') + '</ul>' : '<p class="empty">无</p>'}</section>
+      <section class="panel"><h3 class="tt">🟠 中优先提醒（${g['中'].length}）</h3>${g['中'].length ? '<ul class="rem-list">' + g['中'].map((r) => `<li class="rem rem-mid"><span class="rem-type">${r.type}</span><span class="rem-proj" data-act="goto-proj" data-id="${r.projectId || ''}">${esc(r.project)}</span><span class="rem-date">${fmtDate(r.date)} ${rel(r.date)}</span></li>`).join('') + '</ul>' : '<p class="empty">无</p>'}</section>
+    </div>`;
+  }
+
+  /* ===================== 人员管理（拆分为「对接人」与「经办法官」两个独立区域） ===================== */
+  function viewPersonnel() {
+    const cls = S.listClients();
+    const jds = S.listJudges();
+    const cliRows = cls.length ? cls.map((c) => `<tr data-act="cli-open" data-id="${c.id}"><td class="t-title">${esc(c.name)}</td><td>${esc(c.project || '—')}</td><td>${esc(c.company || '—')}</td><td>${esc(c.contact || '—')}</td><td>${esc(c.address || '—')}</td><td>${c.records ? c.records.length : 0} 条</td><td class="row-actions"><button class="mini" data-act="cli-edit" data-id="${c.id}">编辑</button><button class="mini danger" data-act="cli-del" data-id="${c.id}">删</button></td></tr>`).join('') : '<tr><td colspan="6" class="empty">暂无对接人</td></tr>';
+    const judRows = jds.length ? jds.map((j) => `<tr data-act="jud-open" data-id="${j.id}"><td class="t-title">${esc(j.name)}</td><td>${esc(j.case || '—')}</td><td>${esc(j.court || '—')}</td><td>${esc(j.contact || '—')}</td><td>${esc(j.address || '—')}</td><td>${j.records ? j.records.length : 0} 条</td><td class="row-actions"><button class="mini" data-act="jud-edit" data-id="${j.id}">编辑</button><button class="mini danger" data-act="jud-del" data-id="${j.id}">删</button></td></tr>`).join('') : '<tr><td colspan="6" class="empty">暂无经办法官</td></tr>';
+    return `
+    <section class="panel">
+      <div class="ph"><h3 class="tt">对接人</h3><button class="link" data-act="cli-new">+ 新建对接人</button></div>
+      <div class="table-wrap"><table class="tbl"><thead><tr><th>对接人</th><th>所属项目</th><th>所属公司</th><th>联系方式</th><th>地址</th><th>沟通情况</th><th style="width:120px">操作</th></tr></thead><tbody>${cliRows}</tbody></table></div>
+    </section>
+    <section class="panel">
+      <div class="ph"><h3 class="tt">经办法官</h3><button class="link" data-act="jud-new">+ 新建经办法官</button></div>
+      <div class="table-wrap"><table class="tbl"><thead><tr><th>经办人</th><th>所属案件</th><th>法院</th><th>联系方式</th><th>地址</th><th>沟通情况</th><th style="width:120px">操作</th></tr></thead><tbody>${judRows}</tbody></table></div>
+    </section>`;
+  }
+  function cliForm(c) { c = c || {}; const projOpts = S.listProjects().map((p) => p.name); return field('name', '对接人', 'text', c.name) + fieldCombo('project', '所属项目', c.project, projOpts, { wide: true }) + field('company', '所属公司', 'text', c.company) + field('contact', '联系方式', 'text', c.contact) + field('address', '地址', 'text', c.address, { wide: true }); }
+  function bindCliForm(id) { const c = id ? S.getClient(id) : null; openModal(id ? '编辑对接人' : '新建对接人', cliForm(c), (v) => { const data = { name: v.name, project: v.project, company: v.company, contact: v.contact, address: v.address }; if (id) { data.id = id; S.saveClient(data, false); } else S.saveClient(data, true); closeModal(); render(); }); }
+  function cliDetail(id) {
+    const c = S.getClient(id); if (!c) return;
+    openModal(c.name + '（对接人）', `<div class="detail"><div class="dl"><div><b>所属项目</b>${esc(c.project || '—')}</div><div><b>所属公司</b>${esc(c.company || '—')}</div><div><b>联系方式</b>${esc(c.contact || '—')}</div><div><b>地址</b>${esc(c.address || '—')}</div></div>
+      <h4>沟通情况</h4><ul class="prog">${(c.records || []).map((r) => `<li><span class="prog-d">${esc(r.date)}</span><span class="prog-c">${esc(r.content)}</span><span class="prog-a">${esc(r.by)}</span></li>`).join('') || '<li class="empty">暂无记录</li>'}</ul>
+      <div class="ph"><button class="mini" data-act="cli-addrec" data-id="${c.id}">+ 沟通</button><button class="mini" data-act="cli-edit" data-id="${c.id}">编辑</button><button class="mini danger" data-act="cli-del" data-id="${c.id}">删除</button></div></div>`, null, { readonly: true });
+  }
+  function judForm(j) { j = j || {}; const projOpts = S.listProjects().map((p) => p.name); return field('name', '经办人', 'text', j.name) + fieldCombo('case', '所属案件', j.case, projOpts, { wide: true }) + field('court', '法院', 'text', j.court) + field('contact', '联系方式', 'text', j.contact) + field('address', '地址', 'text', j.address, { wide: true }); }
+  function bindJudForm(id) { const j = id ? S.getJudge(id) : null; openModal(id ? '编辑经办法官' : '新建经办法官', judForm(j), (v) => { const data = { name: v.name, case: v.case, court: v.court, contact: v.contact, address: v.address }; if (id) { data.id = id; S.saveJudge(data, false); } else S.saveJudge(data, true); closeModal(); render(); }); }
+  function judDetail(id) {
+    const j = S.getJudge(id); if (!j) return;
+    openModal(j.name + '（经办法官）', `<div class="detail"><div class="dl"><div><b>所属案件</b>${esc(j.case || '—')}</div><div><b>法院</b>${esc(j.court || '—')}</div><div><b>联系方式</b>${esc(j.contact || '—')}</div><div><b>地址</b>${esc(j.address || '—')}</div></div>
+      <h4>沟通情况</h4><ul class="prog">${(j.records || []).map((r) => `<li><span class="prog-d">${esc(r.date)}</span><span class="prog-c">${esc(r.content)}</span><span class="prog-a">${esc(r.by)}</span></li>`).join('') || '<li class="empty">暂无记录</li>'}</ul>
+      <div class="ph"><button class="mini" data-act="jud-addrec" data-id="${j.id}">+ 沟通</button><button class="mini" data-act="jud-edit" data-id="${j.id}">编辑</button><button class="mini danger" data-act="jud-del" data-id="${j.id}">删除</button></div></div>`, null, { readonly: true });
+  }
+
+  /* ===================== 数据导出 ===================== */
+  function viewExport() {
+    return `<div class="export-wrap">
+      <section class="panel"><h3 class="tt">报表导出</h3><p class="hint">CSV 可用 Excel 打开，JSON 用于备份与多端恢复。</p>
+        <div class="exp-btns"><button class="btn" data-act="exp" data-t="projects">导出案件台账(CSV)</button><button class="btn" data-act="exp" data-t="tasks">导出任务(CSV)</button><button class="btn" data-act="exp" data-t="clients">导出对接人(CSV)</button><button class="btn" data-act="exp" data-t="judges">导出经办法官(CSV)</button><button class="btn primary" data-act="exp-json">导出全量备份(JSON)</button></div>
+        <p class="sync-state">上次同步：${S.meta().lastSync ? fmtDT(S.meta().lastSync) : '—'}</p></section>
+      <section class="panel"><h3 class="tt">数据恢复 / 多端同步</h3><p class="hint">导入 JSON 备份以恢复数据；同源多标签页通过 BroadcastChannel 实时同步。</p>
+        <div class="exp-btns"><label class="btn">选择备份文件导入<input type="file" id="imp-file" accept="application/json" hidden></label><button class="btn danger" data-act="reset-demo">恢复示范数据</button></div></section>
+    </div>
+
+    <section class="panel" style="max-width:960px">
+      <div class="illus-wrap" style="margin-bottom:12px">
+        ${illus('law')}
+        <div><h3 class="tt" style="margin:0">导出二次校验（连接后端数据库）</h3>
+        <span class="hint">先把当前数据同步到真实 SQLite 后端，导出前让后端按台账规则做一致性校验，返回缺失字段、逻辑冲突、孤儿任务等问题清单。</span></div>
+      </div>
+      <div class="exp-btns">
+        <button class="btn primary" data-act="exp-sync">同步到后端数据库</button>
+        <button class="btn" data-act="exp-validate">导出前二次校验</button>
+        <button class="btn" data-act="exp-db-health">检查后端状态</button>
+      </div>
+      <div id="validate-result" class="validate-result">${state.validateHtml || ''}</div>
+    </section>`;
+  }
+  const API_BASE = (location.port === '8200') ? '' : 'http://localhost:8200';
+  const REMOTE = (location.port === '8200' || location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+
+  /* 本地同步服务：每次变更防抖推送；启动时拉取（最后写入者胜出） */
+  let _saveTimer = null;
+  LB.onPersist = function (db) {
+    if (!REMOTE) return;
+    if (_saveTimer) clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(() => {
+      _saveTimer = null;
+      fetch(API_BASE + '/api/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ db }) })
+        .then((r) => r.json()).then((j) => { if (j && j.savedAt) { db.meta = db.meta || {}; db.meta.syncedAt = j.savedAt; } })
+        .catch(() => {});
+    }, 700);
+  };
+  async function remoteHydrate() {
+    if (!REMOTE) return;
+    try {
+      const r = await fetch(API_BASE + '/api/load');
+      const j = await r.json();
+      if (j && j.db) {
+        const localTs = (S.meta() && S.meta().syncedAt) || null;
+        if (!localTs || (j.savedAt && j.savedAt > localTs)) {
+          S.importJSON(JSON.stringify(j.db));
+          S.DB.meta = S.DB.meta || {}; S.DB.meta.syncedAt = j.savedAt; S.persist();
+        } else if (localTs && (!j.savedAt || localTs > j.savedAt)) {
+          LB.onPersist(S.DB);
+        }
+      }
+    } catch (e) {}
+  }
+  async function apiValidate() {
+    const payload = { projects: S.listProjects(), tasks: S.listTasks(), clients: S.listClients() };
+    try {
+      const r = await fetch(API_BASE + '/api/validate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const res = await r.json();
+      state.validateHtml = renderValidate(res, '校验完成');
+    } catch (e) {
+      state.validateHtml = `<div class="validate-issues"><li><span class="vi-level vi-error">错误</span><span>无法连接后端（${esc(e.message)}）。请确认 server/index.js 已在 8200 端口运行。</span></li></div>`;
+    }
+    render();
+  }
+  async function apiSync() {
+    try {
+      const r = await fetch(API_BASE + '/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ db: S.DB, at: new Date().toISOString() }) });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const res = await r.json();
+      state.validateHtml = `<div class="validate-ok">✓ 已同步到后端数据库：项目 ${res.counts.projects} · 任务 ${res.counts.tasks} · 对接人 ${res.counts.clients}（保存于 ${esc(res.savedAt)}）</div>`;
+    } catch (e) {
+      state.validateHtml = `<div class="validate-issues"><li><span class="vi-level vi-error">错误</span><span>同步失败（${esc(e.message)}）。请确认后端已在 8200 端口运行。</span></li></div>`;
+    }
+    render();
+  }
+  async function apiHealth() {
+    try {
+      const r = await fetch(API_BASE + '/api/health');
+      const res = await r.json();
+      state.validateHtml = `<div class="validate-ok">✓ 后端在线：${esc(res.db)}，已存储 ${res.snapshots} 次快照。</div>`;
+    } catch (e) {
+      state.validateHtml = `<div class="validate-issues"><li><span class="vi-level vi-error">错误</span><span>后端未响应（${esc(e.message)}）。</span></li></div>`;
+    }
+    render();
+  }
+  function renderValidate(res, head) {
+    if (!res.issues || !res.issues.length) return `<div class="validate-ok">✓ ${esc(head)}：未发现一致性问题（项目 ${res.counts.projects} · 任务 ${res.counts.tasks} · 客户 ${res.counts.clients}）。</div>`;
+    const items = res.issues.map((i) => `<li><span class="vi-level vi-${i.level}">${i.level === 'error' ? '错误' : i.level === 'warn' ? '提醒' : '提示'}</span><span>${esc(i.msg)}</span></li>`).join('');
+    return `<div class="validate-ok" style="background:oklch(57% 0.048 350 / .10);border-color:var(--c-aud);color:oklch(48% 0.05 350)">${esc(head)}：发现 ${res.issues.length} 项（错误 ${res.issues.filter((x) => x.level === 'error').length} / 提醒 ${res.issues.filter((x) => x.level === 'warn').length}）。</div><ul class="validate-issues">${items}</ul>`;
+  }
+  function download(name, content, mime) { const blob = new Blob([content], { type: mime || 'text/plain;charset=utf-8' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 2000); }
+
+  /* ===================== 事件 ===================== */
+  function onAct(act, id, el) {
+    switch (act) {
+      case 'goto-reminders': navigate('reminders'); break;
+      case 'goto-proj': if (id) { state.projOpenId = id; navigate('projects'); } break;
+      case 'task-new': bindTaskForm(null); break;
+      case 'task-edit': bindTaskForm(id); break;
+      case 'task-del': if (confirm('确认删除该任务？')) { S.deleteTask(id); render(); } break;
+      case 'task-toggle': { const t = S.getTask(id); const next = (t.status === '待办') ? '待审阅' : '待办'; S.setTaskStatus(id, next); render(); } break;
+      case 'task-status': openTaskStatus(id); break;
+      case 'proj-new': bindProjForm(null); break;
+      case 'proj-toggle': state.projOpenId = (state.projOpenId === id) ? null : id; render(); break;
+      case 'proj-edit': bindProjForm(id); break;
+      case 'proj-del': if (confirm('确认删除该项目及其关联任务？')) { S.deleteProject(id); if (state.projOpenId === id) state.projOpenId = null; render(); } break;
+      case 'proj-addtask': openModal('新建关联任务', taskForm({ projectId: id }), (v) => { S.saveTask({ title: v.title, priority: v.priority, projectId: id, dueDate: v.dueDate ? new Date(v.dueDate).toISOString() : null, status: v.status }, true); closeModal(); render(); }); break;
+      case 'proj-addprog': openModal('添加进展', field('content', '进展说明', 'textarea', ''), (v) => { S.addProgress(id, { content: v.content }); closeModal(); render(); }); break;
+      case 'proj-deldoc': if (confirm('确认删除该文书？')) { S.deleteDoc(id, parseInt(el.dataset.doc, 10)); render(); } break;
+      case 'evt-new': openModal('新建日程', field('title', '标题', 'text', '') + field('start', '开始时间', 'datetime', '') + field('end', '结束时间', 'datetime', ''), (v) => { S.saveManualEvent({ title: v.title, start: v.start ? new Date(v.start).toISOString() : new Date().toISOString(), end: v.end ? new Date(v.end).toISOString() : null, projectId: null }, true); closeModal(); render(); }); break;
+      case 'evt-open': { const k = el.dataset.kind, ref = el.dataset.ref; if ((k === 'task') && ref) { const t = S.getTask(ref); if (t) openModal('任务', `<div class="detail"><div class="dl"><div><b>任务</b>${esc(t.title)}</div><div><b>优先级</b>${t.priority}</div><div><b>截止</b>${fmtDT(t.dueDate)}</div><div><b>状态</b>${t.status}</div></div></div>`, null, { readonly: true }); } else if ((k === 'hearing' || k === 'contract' || k === 'renewal') && ref) { state.projOpenId = ref; navigate('projects'); } break; }
+      case 'cal-prev': state.calDate = shift(state.calDate, state.calMode === 'week' ? -7 : -1); render(); break;
+      case 'cal-next': state.calDate = shift(state.calDate, state.calMode === 'week' ? 7 : 1); render(); break;
+      case 'cal-today': state.calDate = new Date(); render(); break;
+      case 'cal-week': state.calMode = 'week'; render(); break;
+      case 'cal-month': state.calMode = 'month'; render(); break;
+      case 'cli-new': bindCliForm(null); break;
+      case 'cli-open': cliDetail(id); break;
+      case 'cli-edit': bindCliForm(id); break;
+      case 'cli-del': if (confirm('确认删除该对接人？')) { S.deleteClient(id); render(); } break;
+      case 'cli-addrec': openModal('添加沟通记录', field('content', '内容', 'textarea', ''), (v) => { S.addClientRecord(id, { content: v.content }); closeModal(); render(); }); break;
+      case 'jud-new': bindJudForm(null); break;
+      case 'jud-open': judDetail(id); break;
+      case 'jud-edit': bindJudForm(id); break;
+      case 'jud-del': if (confirm('确认删除该经办法官？')) { S.deleteJudge(id); render(); } break;
+      case 'jud-addrec': openModal('添加沟通记录', field('content', '内容', 'textarea', ''), (v) => { S.addJudgeRecord(id, { content: v.content }); closeModal(); render(); }); break;
+      case 'report-apply': applyReport(); break;
+      case 'exp-sync': apiSync(); break;
+      case 'exp-validate': apiValidate(); break;
+      case 'exp-db-health': apiHealth(); break;
+      case 'exp': download('WORK-Plat_' + el.dataset.t + '_' + LB.util.todayStr() + '.csv', '﻿' + S.exportCSV(el.dataset.t), 'text/csv;charset=utf-8'); break;
+      case 'exp-json': download('WORK-Plat_backup_' + LB.util.todayStr() + '.json', S.exportJSON(), 'application/json'); break;
+      case 'reset-demo': if (confirm('将覆盖当前数据并恢复示范数据，确认？')) { S.resetDemo(); render(); } break;
+    }
+  }
+  function shift(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
+
+  function taskForm(t) {
+    t = t || {};
+    const opts = S.listProjects().map((p) => p.name);
+    return field('title', '任务标题', 'text', t.title, { ph: '如：提交质证意见' }) +
+      field('projectId', '关联项目', 'select', (S.getProject(t.projectId) || {}).name || '', { options: [''].concat(opts) }) +
+      field('dueDate', '截止日期', 'datetime', t.dueDate ? t.dueDate.slice(0, 16) : '') +
+      field('status', '状态', 'select', t.status || '待办', { options: ['待办', '待审阅', '已完成'] });
+  }
+  function bindTaskForm(id) { const t = id ? S.getTask(id) : null; openModal(id ? '编辑任务' : '新建任务', taskForm(t), (v) => { const pid = v.projectId ? (S.listProjects().find((p) => p.name === v.projectId) || {}).id : null; const data = { title: v.title, projectId: pid, dueDate: v.dueDate ? new Date(v.dueDate).toISOString() : null, status: v.status }; if (id) { data.id = id; S.saveTask(data, false); } else S.saveTask(data, true); closeModal(); render(); }); }
+
+  /* 任务状态快捷设置：待办 → 待审阅 → 已完成（主动置“已完成”会触发自动归档） */
+  function openTaskStatus(id) {
+    const t = S.getTask(id); if (!t) return;
+    const opts = ['待办', '待审阅', '已完成'];
+    openModal('设置任务状态', '<div class="status-pick">' + opts.map((s) => `<button class="btn ${s === t.status ? 'primary' : ''}" data-st="${s}" style="display:block;width:100%;margin-bottom:9px">${s}</button>`).join('') + '<p class="hint" style="margin-top:4px">把状态主动改为「已完成」时，系统会自动归档到关联项目，生成“年月日，完成了什么工作”的进展记录。</p></div>', null, { readonly: true });
+    $$('#modal-body [data-st]').forEach((b) => { b.onclick = () => { S.setTaskStatus(id, b.dataset.st); closeModal(); render(); }; });
+  }
+
+  function bindView() {
+    $$('[data-view]').forEach((b) => b.onclick = () => navigate(b.dataset.view));
+    $$('[data-act]').forEach((el) => { el.onclick = (e) => { onAct(el.dataset.act, el.dataset.id, el); e.stopPropagation(); }; });
+    const pq = $('[data-act="proj-q"]'); if (pq) pq.oninput = (e) => { state.projFilter.q = e.target.value; render(); };
+    const ps = $('[data-act="proj-status"]'); if (ps) ps.onchange = (e) => { state.projFilter.status = e.target.value; render(); };
+    const pc = $('[data-act="proj-cause"]'); if (pc) pc.onchange = (e) => { state.projFilter.cause = e.target.value; render(); };
+    const pt = $('[data-act="proj-tag"]'); if (pt) pt.onchange = (e) => { state.projFilter.tag = e.target.value; render(); };
+    const imp = $('#imp-file'); if (imp) imp.onchange = (e) => { const f = e.target.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => { try { S.importJSON(rd.result); alert('导入成功'); render(); } catch (err) { alert('导入失败：' + err.message); } }; rd.readAsText(f); };
+    // 智能汇报：输入即解析预览 + 句末自动应用
+    const ta = $('#report-text');
+    if (ta) {
+      ta.oninput = () => {
+        clearTimeout(rpTimer);
+        const v = ta.value;
+        rpTimer = setTimeout(() => {
+          state.reportPreview = LB.nlp.parse(v); updPreview();
+          if (/[。！？；.!?]$/.test(v.trim()) && v.trim() !== state.lastAppliedRaw) {
+            setTimeout(() => { if ($('#report-text') && $('#report-text').value === v) applyReport(); }, 650);
+          }
+        }, 420);
+      };
+      ta.onkeydown = (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); applyReport(); } };
+    }
+  }
+
+  LB.onSync = () => { if (state.view) render(); };
+
+  /* ===================== 启动 ===================== */
+  function init() {
+    $('#app').innerHTML = `
+      <aside class="sidebar"><div class="brand">WORK-Plat</div><nav id="nav"></nav></aside>
+      <main class="main"><header class="topbar"><h2 id="view-title"></h2></header>
+      <div class="view-scroll"><div id="view" class="view"></div></div></main>
+      <div id="modal" class="modal"><div class="modal-mask" data-act="modal-mask"></div><div class="modal-card"><div class="modal-head"><h3 id="modal-title"></h3><button class="x" id="modal-x">×</button></div><div class="modal-body" id="modal-body"></div><div class="modal-foot"><button class="btn" id="modal-cancel">取消</button><button class="btn primary" id="modal-save">保存</button></div></div></div>`;
+    $('#modal-x').onclick = closeModal;
+    $('.modal-mask').onclick = closeModal;
+    if (REMOTE) remoteHydrate().then(render); else render();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+})(window);
