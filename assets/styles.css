@@ -170,15 +170,12 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: var(--fw-bold); col
 /* ============ 表格 ============ */
 .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
 .tbl { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; table-layout: fixed; border-spacing: 0; }
-.tbl th, .tbl td { padding: var(--space-md) var(--space-md); text-align: left; border-bottom: 1px solid var(--line); vertical-align: middle; }
-.tbl th { background: var(--surface-2); color: var(--ink); font-weight: var(--fw-bold); font-size: var(--fs-md); letter-spacing: 0.02em; border-bottom: 2px solid var(--line); position: sticky; top: 0; }
-.tbl td { font-size: var(--fs-sm); color: var(--ink-2); }
-.tbl th + th, .tbl td + td, .tbl th + td, .tbl td + th { border-left: 1px solid var(--line); }
-.tbl thead th:first-child, .tbl tbody td:first-child { border-left: none; }
+.tbl th, .tbl td { padding: var(--space-sm) var(--space-md); text-align: left; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.tbl th { background: var(--surface-2); color: var(--ink-2); font-weight: var(--fw-bold); font-size: var(--fs-xs); position: sticky; top: 0; }
 .tbl tr:hover td { background: var(--surface-2); }
-.tbl .empty { text-align: center; color: var(--muted); padding: var(--space-lg); border-left: none; }
+.tbl .empty { text-align: center; color: var(--muted); padding: var(--space-lg); }
 .row-done td { opacity: .5; }
-.t-title { font-weight: var(--fw-semibold); color: var(--ink); display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; font-size: var(--fs-sm); }
+.t-title { font-weight: var(--fw-semibold); display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
 .t-proj { color: var(--prim); cursor: pointer; font-weight: var(--fw-semibold); }
 .t-proj:hover { text-decoration: underline; }
 .row-actions { white-space: nowrap; }
@@ -359,8 +356,6 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: var(--fw-bold); col
   .view { padding: var(--space-md) 14px var(--space-xl); max-width: 100%; }
   .panel { padding: var(--space-md); }
   .tbl th, .tbl td { padding: 8px 10px; }
-  .tbl th { font-size: var(--fs-sm); }
-  .tbl td { font-size: var(--fs-xs); }
   .exp-btns .btn { flex: 1 1 auto; }
   .dash-cols > .panel { max-height: none; }
   .ph { flex-wrap: wrap; gap: 8px; }
