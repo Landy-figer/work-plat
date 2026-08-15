@@ -191,6 +191,29 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: var(--fw-bold); col
 .card-pill.row-done { opacity: .55; }
 .card-pill.row-done .card-pill-title { text-decoration: line-through; }
 
+/* 人员管理胶囊仓：4 列对齐 + 表头行 */
+.card-list-head {
+  display: grid;
+  gap: var(--space-md);
+  padding: 10px 18px 8px;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+  color: var(--sub);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--line);
+}
+.card-list-head--personnel { grid-template-columns: 1.1fr 1.6fr 1.3fr 1.5fr 110px; }
+.card-pill--personnel { grid-template-columns: 1.1fr 1.6fr 1.3fr 1.5fr 110px; align-items: center; padding: 13px 18px; }
+.card-pill--personnel .cp-cell { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.card-pill--personnel .cp-cell.cp-name { font-weight: var(--fw-semibold); color: var(--ink); font-size: var(--fs-md); }
+.card-pill--personnel .cp-cell.cp-proj { color: var(--ink); font-size: var(--fs-sm); }
+.card-pill--personnel .cp-cell.cp-contact { color: var(--ink-2); font-size: var(--fs-sm); }
+.card-pill--personnel .cp-cell.cp-addr { color: var(--ink-2); font-size: var(--fs-sm); }
+.card-pill--personnel .cp-cell.cp-act { display: flex; flex-direction: row; gap: 6px; justify-content: flex-end; align-items: center; }
+.card-pill--personnel .cp-sub { color: var(--muted); font-size: var(--fs-xs); }
+.card-pill--personnel .cp-cell.cp-name, .card-pill--personnel .cp-cell.cp-proj, .card-pill--personnel .cp-cell.cp-contact, .card-pill--personnel .cp-cell.cp-addr { overflow: hidden; }
+
 /* ============ 表格（保留用于内嵌详情等场景） ============ */
 .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
 .tbl { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; table-layout: fixed; border-spacing: 0; }
@@ -361,6 +384,9 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: var(--fw-bold); col
   .card-pill.is-task { grid-template-columns: 34px minmax(0, 1fr) auto; }
   .card-pill-actions { grid-column: 1 / -1; justify-content: flex-end; padding-top: 6px; border-top: 1px dashed var(--line); margin-top: 4px; }
   .card-pill-aside { font-size: var(--fs-xs); }
+  .card-list-head--personnel, .card-pill--personnel { grid-template-columns: 1fr 1.3fr auto; }
+  .card-list-head--personnel > span:nth-child(4), .card-pill--personnel .cp-addr { display: none; }
+  .card-list-head--personnel > span:nth-child(2), .card-pill--personnel .cp-cell.cp-proj { overflow: hidden; }
 }
 
 /* 手机：侧栏转为顶部横向导航，内容单列铺满 */

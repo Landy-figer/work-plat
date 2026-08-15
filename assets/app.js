@@ -457,45 +457,39 @@
   function viewPersonnel() {
     const cls = S.listClients();
     const jds = S.listJudges();
-    const cliCards = cls.length ? `<ul class="card-list">${cls.map((c) => `<li class="card-pill" data-act="cli-open" data-id="${c.id}">
-      <div class="card-pill-meta">对接人</div>
-      <div class="card-pill-main">
-        <div class="card-pill-title">${esc(c.name)}</div>
-        <div class="card-pill-sub">${esc(c.project || '未关联项目')}${c.company ? ' · ' + esc(c.company) : ''}</div>
-      </div>
-      <div class="card-pill-aside">
-        <span>${esc(c.contact || '—')}</span>
-        <span style="color:var(--muted);font-size:var(--fs-xs)">${esc(c.address || '—')}</span>
-        <span style="color:var(--muted);font-size:var(--fs-xs)">沟通 ${c.records ? c.records.length : 0} 条</span>
-      </div>
-      <div class="card-pill-actions">
+    const cliCards = cls.length ? `<ul class="card-list">${cls.map((c) => `<li class="card-pill card-pill--personnel" data-act="cli-open" data-id="${c.id}">
+      <span class="cp-cell cp-name">${esc(c.name)}</span>
+      <span class="cp-cell cp-proj">${esc(c.project || '—')}${c.company ? '<span class="cp-sub">' + esc(c.company) + '</span>' : ''}</span>
+      <span class="cp-cell cp-contact">${esc(c.contact || '—')}<span class="cp-sub">沟通 ${c.records ? c.records.length : 0} 条</span></span>
+      <span class="cp-cell cp-addr">${esc(c.address || '—')}</span>
+      <span class="cp-cell cp-act">
         <button class="mini" data-act="cli-edit" data-id="${c.id}">编辑</button>
         <button class="mini danger" data-act="cli-del" data-id="${c.id}">删</button>
-      </div>
+      </span>
     </li>`).join('')}</ul>` : `<div class="empty"><p>暂无对接人</p></div>`;
-    const judCards = jds.length ? `<ul class="card-list">${jds.map((j) => `<li class="card-pill" data-act="jud-open" data-id="${j.id}">
-      <div class="card-pill-meta">经办法官</div>
-      <div class="card-pill-main">
-        <div class="card-pill-title">${esc(j.name)}</div>
-        <div class="card-pill-sub">${esc(j.case || '未关联案件')}${j.court ? ' · ' + esc(j.court) : ''}</div>
-      </div>
-      <div class="card-pill-aside">
-        <span>${esc(j.contact || '—')}</span>
-        <span style="color:var(--muted);font-size:var(--fs-xs)">${esc(j.address || '—')}</span>
-        <span style="color:var(--muted);font-size:var(--fs-xs)">沟通 ${j.records ? j.records.length : 0} 条</span>
-      </div>
-      <div class="card-pill-actions">
+    const judCards = jds.length ? `<ul class="card-list">${jds.map((j) => `<li class="card-pill card-pill--personnel" data-act="jud-open" data-id="${j.id}">
+      <span class="cp-cell cp-name">${esc(j.name)}</span>
+      <span class="cp-cell cp-proj">${esc(j.case || '—')}${j.court ? '<span class="cp-sub">' + esc(j.court) + '</span>' : ''}</span>
+      <span class="cp-cell cp-contact">${esc(j.contact || '—')}<span class="cp-sub">沟通 ${j.records ? j.records.length : 0} 条</span></span>
+      <span class="cp-cell cp-addr">${esc(j.address || '—')}</span>
+      <span class="cp-cell cp-act">
         <button class="mini" data-act="jud-edit" data-id="${j.id}">编辑</button>
         <button class="mini danger" data-act="jud-del" data-id="${j.id}">删</button>
-      </div>
+      </span>
     </li>`).join('')}</ul>` : `<div class="empty"><p>暂无经办法官</p></div>`;
     return `
     <section class="panel">
       <div class="ph"><h3 class="tt">对接人</h3><button class="link" data-act="cli-new">+ 新建对接人</button></div>
+      <div class="card-list-head card-list-head--personnel">
+        <span>姓名</span><span>所属项目</span><span>联系电话</span><span>地址</span><span></span>
+      </div>
       ${cliCards}
     </section>
     <section class="panel">
       <div class="ph"><h3 class="tt">经办法官</h3><button class="link" data-act="jud-new">+ 新建经办法官</button></div>
+      <div class="card-list-head card-list-head--personnel">
+        <span>经办人</span><span>所属案件</span><span>联系方式</span><span>地址</span><span></span>
+      </div>
       ${judCards}
     </section>`;
   }
