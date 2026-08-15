@@ -358,7 +358,9 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: var(--fw-bold); col
   .topbar { padding: 10px 14px; }
   .view { padding: var(--space-md) 14px var(--space-xl); max-width: 100%; }
   .panel { padding: var(--space-md); }
-  .tbl th, .tbl td { padding: 8px 10px; font-size: var(--fs-sm); }
+  .tbl th, .tbl td { padding: 8px 10px; }
+  .tbl th { font-size: var(--fs-sm); }
+  .tbl td { font-size: var(--fs-xs); }
   .exp-btns .btn { flex: 1 1 auto; }
   .dash-cols > .panel { max-height: none; }
   .ph { flex-wrap: wrap; gap: 8px; }
