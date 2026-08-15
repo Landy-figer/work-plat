@@ -130,6 +130,20 @@
     $('#modal-cancel').onclick = closeModal;
   }
   function closeModal() { $('#modal').classList.remove('open'); }
+  /* 应用内确认弹窗：替代原生 confirm()，避免部分浏览器/内嵌环境拦截模态对话框导致删除等操作“静默失效” */
+  function confirmModal(message, onYes, opts) {
+    opts = opts || {};
+    const saveBtn = $('#modal-save');
+    const restore = () => { saveBtn.textContent = '保存'; };
+    $('#modal-title').textContent = opts.title || '操作确认';
+    $('#modal-body').innerHTML = '<p class="confirm-msg">' + esc(message) + '</p>';
+    $('#modal').classList.add('open');
+    saveBtn.style.display = '';
+    saveBtn.textContent = opts.okText || '确认删除';
+    saveBtn.onclick = () => { closeModal(); restore(); onYes(); };
+    $('#modal-cancel').onclick = () => { closeModal(); restore(); };
+    $('.modal-mask').onclick = () => { closeModal(); restore(); };
+  }
   function collectForm() { const o = {}; $$('#modal-body [data-field]').forEach((inp) => { o[inp.dataset.field] = inp.type === 'checkbox' ? inp.checked : inp.value; }); return o; }
   function field(name, label, type, val, opts) {
     opts = opts || {}; val = val == null ? '' : val;
@@ -390,7 +404,7 @@
     const wide = f.wide ? { wide: true } : {};
     const rows = f.rows ? { rows: f.rows } : {};
     const ph = f.ph ? { ph: f.ph } : {};
-    return field(f.label, f.key, f.type, val, Object.assign({}, wide, opts, rows, ph));
+    return field(f.key, f.label, f.type, val, Object.assign({}, wide, opts, rows, ph));
   }
   function formatFieldValue(v, type) {
     if (v == null || v === '') return '';
@@ -638,16 +652,16 @@
       case 'goto-proj': if (id) { state.projOpenId = id; navigate('projects'); } break;
       case 'task-new': bindTaskForm(null); break;
       case 'task-edit': bindTaskForm(id); break;
-      case 'task-del': if (confirm('确认删除该任务？')) { S.deleteTask(id); render(); } break;
+      case 'task-del': confirmModal('确认删除该任务？删除后不可恢复。', () => { S.deleteTask(id); render(); }); break;
       case 'task-toggle': { const t = S.getTask(id); const next = (t.status === '待办') ? '待审阅' : '待办'; S.setTaskStatus(id, next); render(); } break;
       case 'task-status': openTaskStatus(id); break;
       case 'proj-new': bindProjForm(null); break;
       case 'proj-toggle': state.projOpenId = (state.projOpenId === id) ? null : id; render(); break;
       case 'proj-edit': bindProjForm(id); break;
-      case 'proj-del': if (confirm('确认删除该项目及其关联任务？')) { S.deleteProject(id); if (state.projOpenId === id) state.projOpenId = null; render(); } break;
+      case 'proj-del': confirmModal('确认删除该项目及其关联任务？此操作不可撤销。', () => { S.deleteProject(id); if (state.projOpenId === id) state.projOpenId = null; render(); }, { okText: '删除项目' }); break;
       case 'proj-addtask': openModal('新建关联任务', taskForm({ projectId: id }), (v) => { S.saveTask({ title: v.title, priority: v.priority, projectId: id, dueDate: v.dueDate ? new Date(v.dueDate).toISOString() : null, status: v.status }, true); closeModal(); render(); }); break;
       case 'proj-addprog': openModal('添加进展', field('content', '进展说明', 'textarea', ''), (v) => { S.addProgress(id, { content: v.content }); closeModal(); render(); }); break;
-      case 'proj-deldoc': if (confirm('确认删除该文书？')) { S.deleteDoc(id, parseInt(el.dataset.doc, 10)); render(); } break;
+      case 'proj-deldoc': confirmModal('确认删除该文书？', () => { S.deleteDoc(id, parseInt(el.dataset.doc, 10)); render(); }); break;
       case 'evt-new': openModal('新建日程', field('title', '标题', 'text', '') + field('start', '开始时间', 'datetime', '') + field('end', '结束时间', 'datetime', ''), (v) => { S.saveManualEvent({ title: v.title, start: v.start ? new Date(v.start).toISOString() : new Date().toISOString(), end: v.end ? new Date(v.end).toISOString() : null, projectId: null }, true); closeModal(); render(); }); break;
       case 'evt-open': { const k = el.dataset.kind, ref = el.dataset.ref; if ((k === 'task') && ref) { const t = S.getTask(ref); if (t) openModal('任务', `<div class="detail"><div class="dl"><div><b>任务</b>${esc(t.title)}</div><div><b>优先级</b>${t.priority}</div><div><b>截止</b>${fmtDT(t.dueDate)}</div><div><b>状态</b>${t.status}</div></div></div>`, null, { readonly: true }); } else if ((k === 'hearing' || k === 'contract' || k === 'renewal') && ref) { state.projOpenId = ref; navigate('projects'); } break; }
       case 'cal-prev': state.calDate = shift(state.calDate, state.calMode === 'week' ? -7 : -1); render(); break;
@@ -658,12 +672,12 @@
       case 'cli-new': bindCliForm(null); break;
       case 'cli-open': cliDetail(id); break;
       case 'cli-edit': bindCliForm(id); break;
-      case 'cli-del': if (confirm('确认删除该对接人？')) { S.deleteClient(id); render(); } break;
+      case 'cli-del': confirmModal('确认删除该对接人？', () => { S.deleteClient(id); render(); }); break;
       case 'cli-addrec': openModal('添加沟通记录', field('content', '内容', 'textarea', ''), (v) => { S.addClientRecord(id, { content: v.content }); closeModal(); render(); }); break;
       case 'jud-new': bindJudForm(null); break;
       case 'jud-open': judDetail(id); break;
       case 'jud-edit': bindJudForm(id); break;
-      case 'jud-del': if (confirm('确认删除该经办法官？')) { S.deleteJudge(id); render(); } break;
+      case 'jud-del': confirmModal('确认删除该经办法官？', () => { S.deleteJudge(id); render(); }); break;
       case 'jud-addrec': openModal('添加沟通记录', field('content', '内容', 'textarea', ''), (v) => { S.addJudgeRecord(id, { content: v.content }); closeModal(); render(); }); break;
       case 'report-apply': applyReport(); break;
       case 'exp-sync': apiSync(); break;
@@ -671,7 +685,7 @@
       case 'exp-db-health': apiHealth(); break;
       case 'exp': download('WORK-Plat_' + el.dataset.t + '_' + LB.util.todayStr() + '.csv', '﻿' + S.exportCSV(el.dataset.t), 'text/csv;charset=utf-8'); break;
       case 'exp-json': download('WORK-Plat_backup_' + LB.util.todayStr() + '.json', S.exportJSON(), 'application/json'); break;
-      case 'reset-demo': if (confirm('将覆盖当前数据并恢复示范数据，确认？')) { S.resetDemo(); render(); } break;
+      case 'reset-demo': confirmModal('将覆盖当前数据并恢复示范数据，此操作不可撤销，确认？', () => { S.resetDemo(); render(); }, { okText: '恢复示范数据' }); break;
     }
   }
   function shift(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }

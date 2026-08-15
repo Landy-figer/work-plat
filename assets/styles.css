@@ -42,15 +42,15 @@
   --font-note: "Noto Serif SC", "Newsreader", Georgia, serif;               /* 备注 / 进展 / 引文 */
   --font-disp: "Fraunces", "Noto Serif SC", Georgia, serif;                 /* 品牌字标 / 数字 */
 
-  /* 字号阶梯（模块化 rem 标尺，基准 1rem = 10px；正文统一 10 号字） */
-  --fs-xs:   0.9rem;   /* 9px  辅助文字 / 标签 */
-  --fs-sm:   1rem;     /* 10px 次级文字 */
-  --fs-base: 1rem;     /* 10px 正文（统一 10 号字） */
-  --fs-md:   1.2rem;   /* 12px 区块导语 */
-  --fs-lg:   1.4rem;   /* 14px 视图标题 */
-  --fs-xl:   1.8rem;   /* 18px 主标题 / KPI 数字 */
-  --fs-2xl:  2.4rem;   /* 24px hero */
-  --fs-3xl:  3.2rem;   /* 32px 品牌展示 */
+  /* 字号阶梯（模块化 rem 标尺，基准 1rem = 13px；正文统一 13 号字，提升可读性与空间感） */
+  --fs-xs:   0.86rem;  /* ~11px 辅助文字 / 标签 */
+  --fs-sm:   1rem;     /* 13px  次级文字 */
+  --fs-base: 1rem;     /* 13px  正文 */
+  --fs-md:   1.18rem;  /* ~15px 区块导语 */
+  --fs-lg:   1.42rem;  /* ~18px 视图标题 */
+  --fs-xl:   1.85rem;  /* ~24px 主标题 / KPI 数字 */
+  --fs-2xl:  2.5rem;   /* ~32px hero */
+  --fs-3xl:  3.4rem;   /* ~44px 品牌展示 */
 
   /* 字重角色 */
   --fw-regular:  400;
@@ -58,21 +58,21 @@
   --fw-semibold: 600;
   --fw-bold:     700;
 
-  /* 行高层级 */
-  --lh-tight: 1.2;
-  --lh-snug:  1.4;
-  --lh-base:  1.65;
-  --lh-loose: 1.8;
+  /* 行高层级（略放宽，提升阅读舒缓感） */
+  --lh-tight: 1.25;
+  --lh-snug:  1.45;
+  --lh-base:  1.72;
+  --lh-loose: 1.85;
 
-  /* 间距标尺（宽松、留白合理） */
-  --space-2xs: 4px;  --space-xs: 8px;  --space-sm: 12px;
-  --space-md:  16px; --space-lg: 24px; --space-xl: 32px;
-  --space-2xl: 48px; --space-3xl: 64px;
+  /* 间距标尺（宽松、留白合理，适度加大以更充盈舒展） */
+  --space-2xs: 5px;  --space-xs: 10px; --space-sm: 14px;
+  --space-md:  18px; --space-lg: 28px; --space-xl: 38px;
+  --space-2xl: 54px; --space-3xl: 72px;
 }
 
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
-html { font-size: 10px; }
+html { font-size: 13px; }
 body {
   font-family: var(--font-ui);
   background: var(--paper);
@@ -307,6 +307,7 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: var(--fw-bold); col
 .modal-head h3 { margin: 0; font-size: var(--fs-md); }
 .modal-head .x { background: none; border: none; color: var(--sub); font-size: var(--fs-xl); line-height: 1; }
 .modal-body { padding: var(--space-lg); overflow-y: auto; }
+.confirm-msg { font-size: var(--fs-sm); color: var(--ink-2); line-height: var(--lh-base); padding: 6px 2px; margin: 0; }
 .modal-foot { display: flex; justify-content: flex-end; gap: 10px; padding: var(--space-md) var(--space-lg); border-top: 1px solid var(--line); }
 .fld { display: flex; flex-direction: column; gap: 6px; margin-bottom: 13px; }
 .fld > span { color: var(--ink-2); font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
