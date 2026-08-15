@@ -1,5 +1,5 @@
 /* =====================================================================
- * WORK-Plat — 个人法务工作台 (app.js)
+ * WORK-Plat — 个人工作台 (app.js)
  * 路由、工作台合并视图、智能汇报自动解析、项目内联展开、OKLCH 极简主题
  * ===================================================================== */
 (function (global) {
@@ -180,7 +180,7 @@
     </div>
 
     <section class="panel report-card">
-      <textarea id="report-text" rows="4" placeholder="例：百高项目债权处置 明天提交处置进展报告，8月20日开庭&#10;例：新建项目 盈基大厦续封，债权持有人百高，对方当事人债务人，案由保全&#10;例：本周已向法庭提交质证意见；待法院出具裁决"></textarea>
+      <textarea id="report-text" rows="4" placeholder="例：百高项目债权处置 明天提交处置进展报告，8月20日开庭"></textarea>
       <div class="rp-bar">
         <button class="btn primary" data-act="report-apply">确认</button>
         <span class="rp-status">${state.rpStatus ? esc(state.rpStatus) : '等待输入…'}</span>
@@ -224,7 +224,7 @@
         <td><span class="st st-${taskStatusClass(t.status)} st-act" data-act="task-status" data-id="${t.id}" title="点击设置状态">${t.status}</span></td>
         <td class="row-actions"><button class="mini" data-act="task-edit" data-id="${t.id}">编辑</button><button class="mini danger" data-act="task-del" data-id="${t.id}">删</button></td>
       </tr>`).join('');
-    return `<div class="table-wrap"><table class="tbl"><thead><tr><th style="width:34px"></th><th>任务</th><th>截止</th><th>状态</th><th style="width:120px">操作</th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="empty">暂无任务</td></tr>'}</tbody></table></div>`;
+    return `<div class="table-wrap"><table class="tbl"><colgroup><col style="width:34px"><col><col style="width:110px"><col style="width:84px"><col style="width:118px"></colgroup><thead><tr><th></th><th>任务</th><th>截止</th><th>状态</th><th>操作</th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="empty">暂无任务</td></tr>'}</tbody></table></div>`;
   }
 
   function remindersHtml(rem) {
@@ -349,24 +349,12 @@
     { section: '关联案件', fields: [
       { key: 'relatedCases', label: '涉及/关联案件', type: 'text', wide: true },
       { key: 'caseNo', label: '案号', type: 'text' }
-    ] },
-    { section: '进展与交接', fields: [
-      { key: 'todo', label: '待办', type: 'textarea', wide: true, rows: 2 },
-      { key: 'handover', label: '交接方案', type: 'textarea', wide: true, rows: 2 }
     ] }
   ];
 
   // —— 类别专属模板（仅扩展本类别字段，不重复通用模块）——
   const PROJ_CATEGORY_TEMPLATES = {
-    '诉讼类': { modules: [
-      { section: '诉讼要素', fields: [
-        { key: 'stage', label: '诉讼阶段', type: 'select', options: ['一审', '二审', '再审', '执行阶段'] },
-        { key: 'court', label: '管辖法院/机构', type: 'text', wide: true },
-        { key: 'claim', label: '诉讼请求', type: 'textarea', wide: true, rows: 2 },
-        { key: 'limitation', label: '诉讼时效届满日', type: 'date' },
-        { key: 'evidence', label: '证据清单', type: 'textarea', wide: true, rows: 2 }
-      ] }
-    ] },
+    '诉讼类': { modules: [] },
     '执行类': { modules: [
       { section: '执行要素', fields: [
         { key: 'execCourt', label: '执行法院', type: 'text', wide: true },

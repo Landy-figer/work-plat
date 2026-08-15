@@ -114,7 +114,7 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: var(--fw-bold); col
 .topbar { display: flex; align-items: center; justify-content: space-between; padding: var(--space-md) var(--space-2xl); border-bottom: 1px solid var(--line); background: oklch(100% 0 0 / .7); backdrop-filter: blur(6px); }
 .topbar h2 { margin: 0; font-size: var(--fs-lg); }
 .view-scroll { flex: 1; overflow: auto; }
-.view { padding: var(--space-xl) var(--space-2xl) var(--space-3xl); max-width: 1180px; }
+.view { padding: var(--space-xl) var(--space-xl) var(--space-3xl); max-width: 1280px; }
 
 /* 模块标题色块标记 */
 .tt::before { content: ''; display: inline-block; width: 5px; height: 0.92em; background: var(--mc); border-radius: 3px; margin-right: 10px; vertical-align: -2px; }
@@ -161,7 +161,7 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: var(--fw-bold); col
 .rp-warn { margin-top: 9px; color: var(--warn); font-size: var(--fs-xs); background: oklch(63% 0.085 75 / .12); border: 1px solid oklch(63% 0.085 75 / .35); padding: 9px 11px; border-radius: 9px; }
 
 /* ============ 工作台两栏 ============ */
-.dash-cols { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-lg); align-items: stretch; min-width: 600px; }
+.dash-cols { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: var(--space-lg); align-items: stretch; }
 .dash-cols > .panel { min-width: 0; max-height: 70vh; display: flex; flex-direction: column; overflow: hidden; }
 .dash-cols > .panel > .ph { flex-shrink: 0; background: var(--surface); z-index: 2; }
 .dash-cols > .panel > .table-wrap { flex: 1 1 auto; min-height: 0; overflow: auto; }
@@ -169,13 +169,13 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: var(--fw-bold); col
 
 /* ============ 表格 ============ */
 .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
-.tbl { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.tbl { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; table-layout: fixed; }
 .tbl th, .tbl td { padding: var(--space-sm) var(--space-md); text-align: left; border-bottom: 1px solid var(--line); }
 .tbl th { background: var(--surface-2); color: var(--ink-2); font-weight: var(--fw-bold); font-size: var(--fs-xs); position: sticky; top: 0; }
 .tbl tr:hover td { background: var(--surface-2); }
 .tbl .empty { text-align: center; color: var(--muted); padding: var(--space-lg); }
 .row-done td { opacity: .5; }
-.t-title { font-weight: var(--fw-semibold); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.t-title { font-weight: var(--fw-semibold); display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
 .t-proj { color: var(--prim); cursor: pointer; font-weight: var(--fw-semibold); }
 .t-proj:hover { text-decoration: underline; }
 .row-actions { white-space: nowrap; }
