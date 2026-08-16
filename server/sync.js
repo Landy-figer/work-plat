@@ -62,6 +62,17 @@ function localSave(db) { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.writeFi
 const PAGES_DATA = path.join(ROOT, 'data', 'workplat.enc.json');
 let _mirrorBusy = false;
 let _mirrorPending = null;
+// 带重试的 git 命令（应对 GitHub 网络偶发超时）；commit 的「无变化」是确定性结果，不重试
+function gitRun(args, timeoutMs, retries, cb) {
+  const tryOnce = (attempt) => {
+    exec('git ' + args, { cwd: ROOT, timeout: timeoutMs }, (e) => {
+      if (!e || retries <= 0) return cb(e);
+      console.error('[pages mirror] git ' + args.split(' ')[0] + ' 失败，重试(' + (attempt + 1) + ')');
+      setTimeout(() => tryOnce(attempt + 1), 1500);
+    });
+  };
+  tryOnce(0);
+}
 function mirrorToPages(sealed) {
   if (typeof sealed !== 'string' || sealed.indexOf('v1:') !== 0) return;
   if (_mirrorBusy) { _mirrorPending = sealed; return; }
@@ -71,13 +82,11 @@ function mirrorToPages(sealed) {
       fs.mkdirSync(path.dirname(PAGES_DATA), { recursive: true });
       fs.writeFileSync(PAGES_DATA, payload);
     } catch (e) { console.error('[pages mirror] write', e.message); _mirrorBusy = false; return; }
-    exec('git pull --rebase -q origin main', { cwd: ROOT, timeout: 12000 }, (e1) => {
-      if (e1) console.error('[pages mirror] pull', e1.message);
-      exec('git add data/workplat.enc.json', { cwd: ROOT, timeout: 5000 }, (e2) => {
-        if (e2) console.error('[pages mirror] add', e2.message);
-        exec('git commit -q -m "mirror: 加密数据同步到线上"', { cwd: ROOT, timeout: 5000 }, (e3) => {
+    gitRun('pull --rebase -q origin main', 15000, 2, () => {
+      gitRun('add data/workplat.enc.json', 5000, 0, () => {
+        gitRun('commit -q -m "mirror: 加密数据同步到线上"', 5000, 0, (e3) => {
           if (e3) console.error('[pages mirror] commit (可能无变化)', e3.message);
-          exec('git push -q origin main', { cwd: ROOT, timeout: 20000 }, (e4) => {
+          gitRun('push -q origin main', 30000, 3, (e4) => {
             if (e4) console.error('[pages mirror] push', e4.message);
             else console.log('[pages mirror] pushed encrypted data ->', new Date().toISOString());
             _mirrorBusy = false;
