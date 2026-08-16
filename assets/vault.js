@@ -17,9 +17,9 @@
   /* 共享校验值（部署时生成，非密码本身，仅供校验是否输入正确） */
   const VAULT_VERIFIER = {
     v: 1,
-    salt: 'y8HaL69GPuwL+AEvf0vMxQ==',
-    iv: 'whwRovHoqFMsTCkz',
-    verifier: 'BE0y173tB3XlpzTuAu3ivYICfgQ1PUtCEvGO'
+    salt: '3NJpuy01cs1KOjGzPNaKAg==',
+    iv: 'cNKy+WWt4vNDelLJ',
+    verifier: 'IxG/o6CA5oTN+IVv5QaoRb62Y+JpIyz2dlNF'
   };
 
   const SUBTLE = (global.crypto && global.crypto.subtle) ? global.crypto.subtle : null;
