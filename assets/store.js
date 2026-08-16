@@ -173,6 +173,23 @@
     delete o.docs;
   }
 
+  /* 拖拽重排：把 ids 指定的子集按新顺序排好，未参与项保持原有相对顺序；整块插入到首个参与项的原位置 */
+  function applyOrder(arr, ids) {
+    const set = new Set(ids);
+    const map = {};
+    arr.forEach((x) => { map[x.id] = x; });
+    const ordered = ids.map((id) => map[id]).filter(Boolean);
+    const result = [];
+    let inserted = false;
+    for (let i = 0; i < arr.length; i++) {
+      const x = arr[i];
+      if (set.has(x.id)) { if (!inserted) { result.push.apply(result, ordered); inserted = true; } }
+      else result.push(x);
+    }
+    if (!inserted) result.push.apply(result, ordered);
+    return result;
+  }
+
   const store = {
     get DB() { return DB; },
     meta() { return DB.meta; },
@@ -196,6 +213,12 @@
       audit('删除项目', o.name);
       persist();
     },
+
+    /* == 排序：拖拽重排持久化（子集安全，保留未参与项的相对顺序） == */
+    reorderProjects(ids) { DB.projects = applyOrder(DB.projects, ids); audit('排序项目', '拖动调整顺序'); persist(); },
+    reorderClients(ids) { DB.clients = applyOrder(DB.clients, ids); audit('排序对接人', '拖动调整顺序'); persist(); },
+    reorderJudges(ids) { DB.judges = applyOrder(DB.judges, ids); audit('排序经办法官', '拖动调整顺序'); persist(); },
+    reorderTasks(ids) { DB.tasks = applyOrder(DB.tasks, ids); audit('排序任务', '拖动调整顺序'); persist(); },
     addProgress(id, note) {
       const o = find(DB.projects, id); if (!o) return;
       o.progress.unshift({ date: note.date || todayStr(), content: note.content, author: note.author || DB.meta.currentUser });

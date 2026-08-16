@@ -147,16 +147,11 @@
 
   function taskStatusClass(s) { return s === '已完成' ? 'done' : s === '待审阅' ? 'review' : 'todo'; }
   function taskTableHtml(tasks) {
-    const list = tasks.slice();
-    const order = { '待办': 0, '待审阅': 1, '已完成': 2 };
-    list.sort((a, b) => {
-      const sa = order[a.status] != null ? order[a.status] : 0, sb = order[b.status] != null ? order[b.status] : 0;
-      if (sa !== sb) return sa - sb;
-      return new Date(a.dueDate || 9e15) - new Date(b.dueDate || 9e15);
-    });
+    const list = tasks.slice(); // 直接按 DB 数组顺序（拖拽排序即持久化顺序），不再按状态/截止自动排序
     const cards = list.map((t) => {
       const isDone = t.status === '已完成';
       return `<li class="card-pill is-task pri-${PRIORITY_CLASS(t.priority)}${isDone ? ' row-done' : ''}" data-act="task-open" data-id="${t.id}">
+        <span class="drag-handle" data-drag-handle title="拖拽排序">⠿</span>
         <label class="chk"><input type="checkbox" data-act="task-toggle" data-id="${t.id}" ${(t.status === '已完成' || t.status === '待审阅') ? 'checked' : ''}><span></span></label>
         <div class="card-pill-main">
           <div class="card-pill-title">${esc(t.title)}</div>
@@ -360,24 +355,29 @@
     if (f.status) list = list.filter((p) => p.status === f.status);
     if (f.cause) list = list.filter((p) => p.cause === f.cause);
     if (f.tag) list = list.filter((p) => (p.tags || []).indexOf(f.tag) >= 0);
-    list.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+    const hasFilter = !!(f.q || f.status || f.cause || f.tag);
+    if (hasFilter) list.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)); // 无筛选时按 DB 数组顺序（即拖拽手动顺序）
     const causes = Array.from(new Set(S.listProjects().map((p) => p.cause).filter(Boolean)));
     const tags = Array.from(new Set(S.listProjects().flatMap((p) => p.tags || [])));
     const cards = list.map((p) => {
       const open = S.listTasks().filter((t) => t.projectId === p.id && t.status !== '已完成').length;
       const expanded = state.projOpenId === p.id;
       const subBits = [esc(p.category || '其他类'), `${open} 个待办`, p.cause ? esc(p.cause) : null].filter(Boolean);
-      return `<li class="card-pill is-proj" data-act="proj-toggle" data-id="${p.id}">
-        <div class="card-pill-meta"><span class="st ${STAT[p.status] || ''}" style="font-size:var(--fs-xs)">${p.status}</span></div>
-        <div class="card-pill-main">
-          <div class="card-pill-title">${esc(p.name)}</div>
-          <div class="card-pill-sub">${subBits.join(' · ')}${(p.tags || []).length ? ' · ' + p.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join('') : ''}</div>
+      return `<li class="proj-row" data-id="${p.id}">
+        <div class="card-pill is-proj" data-act="proj-toggle" data-id="${p.id}">
+          <span class="drag-handle" data-drag-handle title="拖拽排序">⠿</span>
+          <div class="card-pill-meta"><span class="st ${STAT[p.status] || ''}" style="font-size:var(--fs-xs)">${p.status}</span></div>
+          <div class="card-pill-main">
+            <div class="card-pill-title">${esc(p.name)}</div>
+            <div class="card-pill-sub">${subBits.join(' · ')}${(p.tags || []).length ? ' · ' + p.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join('') : ''}</div>
+          </div>
+          <div class="card-pill-actions">
+            <button class="mini" data-act="proj-edit" data-id="${p.id}">编辑</button>
+            <button class="mini danger" data-act="proj-del" data-id="${p.id}">删</button>
+          </div>
         </div>
-        <div class="card-pill-actions">
-          <button class="mini" data-act="proj-edit" data-id="${p.id}">编辑</button>
-          <button class="mini danger" data-act="proj-del" data-id="${p.id}">删</button>
-        </div>
-      </li>${expanded ? `<li class="proj-detail-wrap"><div class="proj-detail-card">${projDetailHtml(p)}</div></li>` : ''}`;
+        ${expanded ? `<div class="proj-detail-card">${projDetailHtml(p)}</div>` : ''}
+      </li>`;
     }).join('');
     return `
     <div class="toolbar">
@@ -544,6 +544,7 @@
     const cls = S.listClients();
     const jds = S.listJudges();
     const cliCards = cls.length ? `<ul class="card-list">${cls.map((c) => `<li class="card-pill card-pill--personnel" data-act="cli-open" data-id="${c.id}">
+      <span class="drag-handle" data-drag-handle title="拖拽排序">⠿</span>
       <span class="cp-cell cp-name">${esc(c.name)}</span>
       <span class="cp-cell cp-proj">${esc(c.project || '—')}${c.company ? '<span class="cp-sub">' + esc(c.company) + '</span>' : ''}</span>
       <span class="cp-cell cp-contact">${esc(c.contact || '—')}<span class="cp-sub">沟通 ${c.records ? c.records.length : 0} 条</span></span>
@@ -554,6 +555,7 @@
       </span>
     </li>`).join('')}</ul>` : `<div class="empty"><p>暂无对接人</p></div>`;
     const judCards = jds.length ? `<ul class="card-list">${jds.map((j) => `<li class="card-pill card-pill--personnel" data-act="jud-open" data-id="${j.id}">
+      <span class="drag-handle" data-drag-handle title="拖拽排序">⠿</span>
       <span class="cp-cell cp-name">${esc(j.name)}</span>
       <span class="cp-cell cp-proj">${esc(j.case || '—')}${j.court ? '<span class="cp-sub">' + esc(j.court) + '</span>' : ''}</span>
       <span class="cp-cell cp-contact">${esc(j.contact || '—')}<span class="cp-sub">沟通 ${j.records ? j.records.length : 0} 条</span></span>
@@ -567,14 +569,14 @@
     <section class="panel">
       <div class="ph"><h3 class="tt">对接人</h3><button class="link" data-act="cli-new">+ 新建对接人</button></div>
       <div class="card-list-head card-list-head--personnel">
-        <span>姓名</span><span>所属项目</span><span>联系电话</span><span>地址</span><span></span>
+        <span></span><span>姓名</span><span>所属项目</span><span>联系电话</span><span>地址</span><span></span>
       </div>
       ${cliCards}
     </section>
     <section class="panel">
       <div class="ph"><h3 class="tt">经办法官</h3><button class="link" data-act="jud-new">+ 新建经办法官</button></div>
       <div class="card-list-head card-list-head--personnel">
-        <span>经办人</span><span>所属案件</span><span>联系方式</span><span>地址</span><span></span>
+        <span></span><span>经办人</span><span>所属案件</span><span>联系方式</span><span>地址</span><span></span>
       </div>
       ${judCards}
     </section>`;
@@ -757,6 +759,117 @@
     $$('#modal-body [data-st]').forEach((b) => { b.onclick = () => { S.setTaskStatus(id, b.dataset.st); closeModal(); render(); }; });
   }
 
+  /* ===================== 拖拽排序（Pointer Events，桌面 + 触屏通用） =====================
+   * 手柄式：仅在 .drag-handle 上发起拖拽，避免与卡片点击（展开/打开）冲突；
+   * 手柄设 touch-action:none，触屏拖拽不触发页面滚动。拖拽结束后吞掉误触 click。
+   */
+  function enableSortable(list, opts) {
+    const itemSel = opts.itemSelector;
+    const getKey = opts.getKey;
+    const onEnd = opts.onEnd;
+    const THRESH = 6;
+    let act = null; // { item, x, y, pointerId, moved, ghost, placeholder, items, fromHandle }
+    list.addEventListener('pointerdown', onDown);
+
+    function onDown(e) {
+      if (e.button != null && e.button !== 0) return;          // 仅左键 / 触摸
+      const handle = e.target.closest('.drag-handle');
+      if (!handle) return;                                      // 仅手柄发起拖拽
+      const item = e.target.closest(itemSel);
+      if (!item || !list.contains(item)) return;
+      if (e.target.closest('button, input, select, textarea, a')) return;
+      act = { item, x: e.clientX, y: e.clientY, pointerId: e.pointerId, moved: false, ghost: null, placeholder: null, items: [], fromHandle: true };
+      try { list.setPointerCapture(e.pointerId); } catch (_) {}
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
+    }
+
+    function onMove(e) {
+      if (!act) return;
+      const dx = e.clientX - act.x, dy = e.clientY - act.y;
+      if (!act.moved) {
+        if (Math.abs(dx) < THRESH && Math.abs(dy) < THRESH) return;
+        act.moved = true;
+        const rect = act.item.getBoundingClientRect();
+        const ph = document.createElement('li');
+        ph.className = 'sort-ph';
+        ph.style.height = rect.height + 'px';
+        ph.style.listStyle = 'none';
+        act.item.parentNode.insertBefore(ph, act.item);
+        act.placeholder = ph;
+        const g = act.item.cloneNode(true);
+        g.className = act.item.className + ' sort-ghost';
+        g.style.position = 'fixed';
+        g.style.width = rect.width + 'px';
+        g.style.left = rect.left + 'px';
+        g.style.top = rect.top + 'px';
+        g.style.margin = '0';
+        g.style.pointerEvents = 'none';
+        g.style.zIndex = '9999';
+        document.body.appendChild(g);
+        act.ghost = g;
+        act.offX = act.x - rect.left;
+        act.offY = act.y - rect.top;
+        act.item.style.display = 'none';
+        act.items = Array.from(list.querySelectorAll(itemSel)).filter((it) => it !== act.item);
+        e.preventDefault();
+      }
+      act.ghost.style.left = (e.clientX - act.offX) + 'px';
+      act.ghost.style.top = (e.clientY - act.offY) + 'px';
+      const others = act.items;
+      let placed = false;
+      for (let i = 0; i < others.length; i++) {
+        const r = others[i].getBoundingClientRect();
+        if (e.clientY < r.top + r.height / 2) { list.insertBefore(act.placeholder, others[i]); placed = true; break; }
+      }
+      if (!placed) list.appendChild(act.placeholder);
+      e.preventDefault();
+    }
+
+    function onUp(e) {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      if (!act) return;
+      try { list.releasePointerCapture(e.pointerId); } catch (_) {}
+      if (act.moved) {
+        if (act.placeholder && act.placeholder.parentNode) act.placeholder.parentNode.replaceChild(act.item, act.placeholder);
+        act.item.style.display = '';
+        if (act.ghost) act.ghost.remove();
+        const finalKeys = Array.from(list.querySelectorAll(itemSel)).map(getKey).filter(Boolean);
+        onEnd(finalKeys);
+      }
+      // 手柄触发的点击（拖拽或点按）都要吞掉，避免误触卡片的展开/打开
+      list.addEventListener('click', swallow, true);
+      act = null;
+    }
+
+    function swallow(ev) {
+      ev.stopPropagation();
+      ev.preventDefault();
+      list.removeEventListener('click', swallow, true);
+    }
+  }
+
+  function bindSortables() {
+    // 项目管理：仅在无筛选时启用（筛选态按更新时间排序，手动重排无意义）
+    const f = state.projFilter;
+    const hasFilter = !!(f.q || f.status || f.cause || f.tag);
+    const pl = $('.proj-list');
+    if (pl && !hasFilter) enableSortable(pl, { itemSelector: '.proj-row', getKey: (el) => el.dataset.id, onEnd: (ids) => S.reorderProjects(ids) });
+    // 人员管理：对接人 / 经办法官 两个列表分别独立重排
+    $$('.card-list').forEach((ul) => {
+      if (!ul.querySelector('.card-pill--personnel')) return;
+      enableSortable(ul, {
+        itemSelector: '.card-pill--personnel',
+        getKey: (el) => el.dataset.id,
+        onEnd: (ids) => { const first = ul.querySelector('.card-pill--personnel'); if (first && first.dataset.act === 'cli-open') S.reorderClients(ids); else S.reorderJudges(ids); }
+      });
+    });
+    // 任务管理：仅工作台面板内的任务列表
+    const tl = $('.dash-cols .card-list');
+    if (tl) enableSortable(tl, { itemSelector: '.card-pill.is-task', getKey: (el) => el.dataset.id, onEnd: (ids) => S.reorderTasks(ids) });
+  }
+
   function bindView() {
     $$('[data-view]').forEach((b) => b.onclick = () => navigate(b.dataset.view));
     $$('[data-act]').forEach((el) => { el.onclick = (e) => { onAct(el.dataset.act, el.dataset.id, el); e.stopPropagation(); }; });
@@ -780,6 +893,7 @@
       };
       ta.onkeydown = (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); applyReport(); } };
     }
+    bindSortables();
   }
 
   LB.onSync = () => { if (state.view) render(); };
