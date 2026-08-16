@@ -66,11 +66,11 @@
       const ex = (kw) => { const inner = kw.replace(/[()]/g, ''); const m = text.match(new RegExp('(?:' + inner + ')([^，。；；]+)')); return m ? m[1].trim() : null; };
       result.createProject = {
         name, status: '进行中', tags: [],
-        creditor: ex('(债权持有人|委托人|客户)'),
+        creditors: (() => { const n = ex('(债权持有人|委托人|客户)'); return n ? [{ name: n }] : []; })(),
         opponent: ex('(对方当事人|对方)'),
         cause: ex('案由')
       };
-      result.summary.push('将创建新项目：' + name + (result.createProject.creditor ? '（债权人 ' + result.createProject.creditor + '）' : ''));
+      result.summary.push('将创建新项目：' + name + ((result.createProject.creditors && result.createProject.creditors.length) ? '（债权人 ' + result.createProject.creditors[0].name + '）' : ''));
     } else {
       // 2) 归属已有项目（全称包含 或 输入为项目名片段，取最长匹配）
       const projects = store.listProjects();

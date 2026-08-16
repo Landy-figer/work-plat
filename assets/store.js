@@ -28,8 +28,8 @@
     const projects = [
       {
         id: 'prj_seed1', name: '百高项目债权处置', category: '破产类',
-        contractLawyer: '《委托代理合同》/我',
-        party: '百高资产管理有限公司', relatedCases: '百高系列债权处置（含重整、变更执行人）', caseNo: '(2026)粤03破申112号',
+        agentLawyer: '《委托代理合同》/我',
+        party: '百高资产管理有限公司', caseNo: '(2026)粤03破申112号',
         opponent: '', handlerContact: '我 13800001111', seizures: [{ type: '不动产', name: '盈基大厦（不动产抵押+股权质押）', start: '2026-04-29', end: '2028-04-28', renewalEnd: '2030-10-29' }],
         contractName: '综合法律服务合同', contractNo: 'HT-2026-0102', cause: '债权处置/破产重整', signDate: '2026-01-08',
         fee: '前期固定 80万 / 后期按回款 8%', feePayment: '已付首期 40万', feeExtraction: '待回款后提取', transferTime: '2026-06-30', transferAmount: '转付杜总 12万',
@@ -37,7 +37,7 @@
         tags: ['破产', '债权处置'], status: '进行中',
         manager: '我', managerContact: '13800001111', contact: '杜总', contactContact: '13900008888',
         todo: '提前45日寄出续封文件并联系经办核对', handover: '卷宗移交本人，同步电子目录',
-        creditor: '百高资产管理有限公司', debtor: '债务人某实业公司', admin: '盈基清算组', claimAmount: '—', bankruptcyStage: '重整',
+        creditors: [{ id: 'cr_seed1', name: '百高资产管理有限公司', transfers: [{ id: 'tf_seed1', date: '2021-07', from: '某信托有限公司', to: '百高资产管理有限公司', amount: '本金 1.2 亿元', applicant: '百高资产管理有限公司' }] }], debtor: '债务人某实业公司', admin: '盈基清算组', claimAmount: '—', bankruptcyStage: '重整',
         progress: [
           { date: '2026-01-12', content: '完成债权尽调，制定处置方案。', author: '我' },
           { date: '2026-04-29', content: '办理盈基大厦查封，注意到期续封。', author: '我' },
@@ -47,8 +47,8 @@
       },
       {
         id: 'prj_seed2', name: '明月地产建设工程合同审查', category: '其他类',
-        contractLawyer: '《法律顾问合同》/我',
-        party: '明月地产集团', relatedCases: '建设工程施工合同履约争议', caseNo: '—',
+        agentLawyer: '《法律顾问合同》/我',
+        party: '明月地产集团', caseNo: '—',
         opponent: '—', handlerContact: '我 13800003333', seizures: [],
         contractName: '建设工程施工合同', contractNo: 'HT-2026-0205', cause: '合同审查', signDate: '2026-05-20',
         fee: '年顾问费 30万', feePayment: '已付', feeExtraction: '—', transferTime: null, transferAmount: null,
@@ -63,8 +63,8 @@
       },
       {
         id: 'prj_seed3', name: '星河生物劳动仲裁代理', category: '诉讼类',
-        contractLawyer: '《委托代理协议》/我',
-        party: '星河生物股份有限公司', relatedCases: '前员工劳动争议仲裁', caseNo: '(2026)京0108劳仲0123号',
+        agentLawyer: '《委托代理协议》/我',
+        party: '星河生物股份有限公司', caseNo: '(2026)京0108劳仲0123号',
         opponent: '前员工李某', handlerContact: '我 13800001111', seizures: [],
         contractName: '委托代理协议', contractNo: 'HT-2026-0170', cause: '劳动争议', signDate: '2026-02-10',
         fee: '基础代理费 5万', feePayment: '已付', feeExtraction: '—', transferTime: null, transferAmount: null,
@@ -199,6 +199,26 @@
     }
     delete o.seizedItem; delete o.collateral; delete o.seizureStart; delete o.seizureEnd;
   }
+  /* 旧版「代理合同及代理律师」(contractLawyer) → 单一「代理律师」(agentLawyer) */
+  function migrateAgent(o) {
+    if (!o) return;
+    if ((o.agentLawyer == null || o.agentLawyer === '') && o.contractLawyer != null) {
+      o.agentLawyer = ('' + o.contractLawyer).trim();
+    }
+    delete o.contractLawyer;
+  }
+  /* 旧版单一「债权持有人」(creditor) → 多项 creditors 数组（每项含债权流转明细 transfers） */
+  function migrateCreditors(o) {
+    if (!o) return;
+    if (!Array.isArray(o.creditors)) {
+      if (o.creditor) {
+        o.creditors = [{ id: uid('cr'), name: ('' + o.creditor).trim(), transfers: [] }];
+      } else {
+        o.creditors = [];
+      }
+    }
+    delete o.creditor;
+  }
 
   /* 查封 / 冻结期限：按财产类型确定上限；续封期限 ≤ 原期限 1/2（法源：查封规定 2020修正 第1条） */
   const SEIZURE_PERIODS = { '资金/银行存款': 12, '动产': 24, '不动产': 36, '其他财产权': 36 }; // 单位：月
@@ -225,6 +245,14 @@
     if (!Array.isArray(arr)) return '';
     const ends = arr.map((s) => s.end || computeSeizureEnd(s.type || '不动产', s.start).end).filter(Boolean).sort();
     return ends.length ? ends[0] : '';
+  }
+  /* 债权持有人多项汇总（用于导出）：名称 + 流转链（原始债权人→受让方(时间)） */
+  function creditorSummary(arr) {
+    if (!Array.isArray(arr) || !arr.length) return '—';
+    return arr.map((h) => {
+      const chain = (h.transfers || []).map((x) => [x.from, x.to].filter(Boolean).join('→') + (x.date ? '(' + x.date + ')' : '')).join('、');
+      return [h.name, chain].filter(Boolean).join('：');
+    }).join(' | ');
   }
 
   /* 至此所有 const（SEIZURE_PERIODS 等）与迁移/计算辅助函数均已声明完成，可安全调用 load() 触发迁移 */
@@ -283,6 +311,23 @@
       audit('新增进展', o.name + '：' + note.content.slice(0, 20));
       persist();
     },
+    deleteProgress(id, idx) {
+      const o = find(DB.projects, id); if (!o || !o.progress) return;
+      const d = o.progress[idx]; if (!d) return;
+      o.progress.splice(idx, 1);
+      o.updatedAt = new Date().toISOString();
+      audit('删除进展', o.name + '：' + (d.content || '').slice(0, 20));
+      persist();
+    },
+    updateProgress(id, idx, note) {
+      const o = find(DB.projects, id); if (!o || !o.progress) return;
+      const d = o.progress[idx]; if (!d) return;
+      if (note.content != null) d.content = note.content;
+      if (note.date) d.date = note.date;
+      o.updatedAt = new Date().toISOString();
+      audit('更新进展', o.name + '：' + (note.content || '').slice(0, 20));
+      persist();
+    },
     addNote(id, note) {
       const o = find(DB.projects, id); if (!o) return;
       o.notes = o.notes || [];
@@ -326,6 +371,25 @@
       c.progress.unshift({ date: note.date || todayStr(), content: note.content, author: note.author || DB.meta.currentUser });
       c.updatedAt = new Date().toISOString(); p.updatedAt = new Date().toISOString();
       audit('新增案件进展', p.name + ' / ' + (c.name || '未命名案件') + '：' + note.content.slice(0, 20));
+      persist();
+    },
+    deleteCaseProgress(projectId, caseId, idx) {
+      const p = find(DB.projects, projectId); if (!p || !p.cases) return;
+      const c = p.cases.find((x) => x.id === caseId); if (!c || !c.progress) return;
+      const d = c.progress[idx]; if (!d) return;
+      c.progress.splice(idx, 1);
+      c.updatedAt = new Date().toISOString(); p.updatedAt = new Date().toISOString();
+      audit('删除案件进展', p.name + ' / ' + (c.name || '未命名案件') + '：' + (d.content || '').slice(0, 20));
+      persist();
+    },
+    updateCaseProgress(projectId, caseId, idx, note) {
+      const p = find(DB.projects, projectId); if (!p || !p.cases) return;
+      const c = p.cases.find((x) => x.id === caseId); if (!c || !c.progress) return;
+      const d = c.progress[idx]; if (!d) return;
+      if (note.content != null) d.content = note.content;
+      if (note.date) d.date = note.date;
+      c.updatedAt = new Date().toISOString(); p.updatedAt = new Date().toISOString();
+      audit('更新案件进展', p.name + ' / ' + (c.name || '未命名案件') + '：' + (note.content || '').slice(0, 20));
       persist();
     },
     addCaseNote(projectId, caseId, note) {
@@ -490,9 +554,9 @@
     exportCSV(table) {
       const esc = (v) => { const s = v == null ? '' : ('' + v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
       let rows, headers;
-      if (table === 'projects') { headers = ['项目名称', '项目类别', '状态', '委托方(当事人)', '对方当事人', '涉及案件', '案号', '代理合同及律师', '合同名称', '合同编号', '案由', '签约时间', '律师费', '付款情况', '提取情况', '转付时间', '转付金额', '查封与保全(多项:类型/名称/起算→截止/续封最迟)', '查封最早截止日', '开庭日期', '合同到期日', '查封到期提醒日', '标签']; rows = DB.projects.map((p) => [p.name, p.category || '其他类', p.status, p.party, p.opponent, p.relatedCases, p.caseNo, p.contractLawyer, p.contractName, p.contractNo, p.cause, p.signDate, p.fee || '', p.feePayment, p.feeExtraction, p.transferTime, p.transferAmount, seizureSummary(p.seizures), seizureEarliest(p.seizures), (p.hearingDate || '').slice(0, 10), (p.contractExpiryDate || '').slice(0, 10), (p.renewalDate || '').slice(0, 10), (p.tags || []).join('|')]); }
+      if (table === 'projects') { headers = ['项目名称', '项目类别', '状态', '委托方(当事人)', '对方当事人', '案号', '代理律师', '债权持有人(多项)', '合同名称', '合同编号', '案由', '签约时间', '律师费', '付款情况', '提取情况', '转付时间', '转付金额', '查封与保全(多项:类型/名称/起算→截止/续封最迟)', '查封最早截止日', '开庭日期', '合同到期日', '查封到期提醒日', '标签']; rows = DB.projects.map((p) => [p.name, p.category || '其他类', p.status, p.party, p.opponent, p.caseNo, p.agentLawyer || '', creditorSummary(p.creditors), p.contractName, p.contractNo, p.cause, p.signDate, p.fee || '', p.feePayment, p.feeExtraction, p.transferTime, p.transferAmount, seizureSummary(p.seizures), seizureEarliest(p.seizures), (p.hearingDate || '').slice(0, 10), (p.contractExpiryDate || '').slice(0, 10), (p.renewalDate || '').slice(0, 10), (p.tags || []).join('|')]); }
       else if (table === 'tasks') { headers = ['标题', '截止日期', '关联项目', '状态']; rows = DB.tasks.map((t) => [t.title, (t.dueDate || '').slice(0, 10), (store.getProject(t.projectId) || {}).name || '', t.status]); }
-      else if (table === 'cases') { headers = ['所属项目', '案件名称', '案件类别', '状态', '当事人', '对方当事人', '关联案件备注', '案号', '代理合同及律师', '合同名称', '合同编号', '案由', '签约时间', '律师费', '付款情况', '提取情况', '转付时间', '转付金额', '查封与保全(多项:类型/名称/起算→截止/续封最迟)', '查封最早截止日', '开庭日期', '合同到期日', '查封到期提醒日', '标签']; rows = DB.projects.flatMap((p) => (p.cases || []).map((c) => [p.name, c.name, c.category || '其他类', c.status, c.party, c.opponent, c.relatedCases, c.caseNo, c.contractLawyer, c.contractName, c.contractNo, c.cause, c.signDate, c.fee || '', c.feePayment, c.feeExtraction, c.transferTime, c.transferAmount, seizureSummary(c.seizures), seizureEarliest(c.seizures), (c.hearingDate || '').slice(0, 10), (c.contractExpiryDate || '').slice(0, 10), (c.renewalDate || '').slice(0, 10), (c.tags || []).join('|')])); }
+      else if (table === 'cases') { headers = ['所属项目', '案件名称', '案件类别', '状态', '当事人', '对方当事人', '案号', '代理律师', '债权持有人(多项)', '合同名称', '合同编号', '案由', '签约时间', '律师费', '付款情况', '提取情况', '转付时间', '转付金额', '查封与保全(多项:类型/名称/起算→截止/续封最迟)', '查封最早截止日', '开庭日期', '合同到期日', '查封到期提醒日', '标签']; rows = DB.projects.flatMap((p) => (p.cases || []).map((c) => [p.name, c.name, c.category || '其他类', c.status, c.party, c.opponent, c.caseNo, c.agentLawyer || '', creditorSummary(c.creditors), c.contractName, c.contractNo, c.cause, c.signDate, c.fee || '', c.feePayment, c.feeExtraction, c.transferTime, c.transferAmount, seizureSummary(c.seizures), seizureEarliest(c.seizures), (c.hearingDate || '').slice(0, 10), (c.contractExpiryDate || '').slice(0, 10), (c.renewalDate || '').slice(0, 10), (c.tags || []).join('|')])); }
       else if (table === 'clients') { headers = ['对接人', '所属项目', '所属公司', '联系方式', '地址', '沟通记录数']; rows = DB.clients.map((c) => [c.name, c.project, c.company, c.contact, c.address, (c.records || []).length]); }
       else if (table === 'judges') { headers = ['经办人', '所属案件', '法院', '联系方式', '地址', '沟通记录数']; rows = DB.judges.map((j) => [j.name, j.case, j.court, j.contact, j.address, (j.records || []).length]); }
       else { return ''; }
@@ -503,7 +567,7 @@
       if (!parsed.projects) throw new Error('无效的数据文件');
       parsed.clients = parsed.clients || []; parsed.judges = parsed.judges || [];
       const cur = (parsed.meta && parsed.meta.currentUser) || '我';
-      parsed.projects.forEach((p) => { if (!Array.isArray(p.cases)) p.cases = []; migrateNotes(p, cur); migrateFee(p); migrateSeizures(p); (p.cases || []).forEach((c) => { migrateNotes(c, cur); migrateFee(c); migrateSeizures(c); }); });
+      parsed.projects.forEach((p) => { if (!Array.isArray(p.cases)) p.cases = []; migrateNotes(p, cur); migrateFee(p); migrateSeizures(p); migrateCreditors(p); migrateAgent(p); (p.cases || []).forEach((c) => { migrateNotes(c, cur); migrateFee(c); migrateSeizures(c); migrateCreditors(c); migrateAgent(c); }); });
       DB = parsed; persist();
       audit('导入数据', '从备份恢复');
       return true;

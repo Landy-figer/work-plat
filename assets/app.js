@@ -20,7 +20,7 @@
 
   const state = {
     view: 'dashboard', calMode: 'week', calDate: new Date(),
-    projFilter: { q: '', status: '', cause: '', tag: '' }, projOpenId: null, openCases: {},
+    projFilter: { q: '', status: '', cause: '', tag: '' }, projOpenId: null, openCases: {}, openCreditors: {},
     reportPreview: null, lastAppliedRaw: '', rpStatus: '', lawQ: '', validateHtml: ''
   };
   let rpTimer = null;
@@ -83,6 +83,14 @@
     $('.modal-mask').onclick = () => { closeModal(); restore(); };
   }
   function collectForm() { const o = {}; $$('#modal-body [data-field]').forEach((inp) => { o[inp.dataset.field] = inp.type === 'checkbox' ? inp.checked : inp.value; }); return o; }
+  /* 进展状态编辑：修改说明与日期（作者保留，不展示「我」标识） */
+  function openProgressEditor(title, item, onSave) {
+    item = item || {};
+    openModal(title, field('content', '进展说明', 'textarea', item.content || '', { wide: true, rows: 3 }) + field('date', '日期', 'date', (item.date || '').slice(0, 10)), (v) => {
+      onSave({ content: v.content, date: v.date ? v.date : (item.date || '') });
+      closeModal(); render();
+    });
+  }
   function field(name, label, type, val, opts) {
     opts = opts || {}; val = val == null ? '' : val;
     let ctrl;
@@ -158,6 +166,89 @@
     ed.addEventListener('click', (ev) => {
       if (ev.target.closest('[data-sz-add]')) { const empty = ed.querySelector('.sz-empty'); if (empty) empty.remove(); ed.insertAdjacentHTML('beforeend', szRowHtml({})); recompute(); }
       else if (ev.target.closest('[data-sz-del]')) { const r = ev.target.closest('[data-sz-row]'); if (r) r.remove(); if (!ed.querySelector('[data-sz-row]')) ed.insertAdjacentHTML('afterbegin', '<div class="sz-empty">暂无查封物，点击「+ 添加查封物」录入。</div>'); }
+    });
+  }
+
+  /* ===================== 破产要素：多项债权持有人 + 债权流转明细 =====================
+   * 数据模型：holders:[{ id, name, transfers:[{ id, date, from(原始债权人/转让方), to(受让方), amount, applicant }] }]
+   * 多次转让（A→B→C）以时间轴形式呈现，每次流转记录含转让时间/原始债权人/债权金额/申请执行人。 */
+  function crHolderHtml(h) {
+    h = h || {};
+    const transfers = Array.isArray(h.transfers) ? h.transfers : [];
+    return `<div class="cr-holder" data-cr-holder data-id="${esc(h.id || '')}">
+      <div class="cr-holder-head">
+        <input class="cr-name" data-cr="name" type="text" value="${esc(h.name || '')}" placeholder="债权持有人名称">
+        <button type="button" class="mini danger cr-del" data-cr-del>删</button>
+      </div>
+      <div class="cr-transfers">
+        <div class="cr-transfers-title">债权流转明细（多次转让按时间轴录入）</div>
+        ${transfers.length ? transfers.map(crTransferRowHtml).join('') : '<div class="cr-empty-sm">暂无流转记录，点击「+ 添加流转」录入。</div>'}
+        <button type="button" class="mini cr-add-tf" data-cr-add-tf>+ 添加流转</button>
+      </div>
+    </div>`;
+  }
+  function crTransferRowHtml(t) {
+    t = t || {};
+    return `<div class="cr-tf-row" data-cr-tf>
+      <input class="cr-tf-date" data-cr-tf="date" type="text" value="${esc(t.date || '')}" placeholder="转让时间(如2021-07)">
+      <input class="cr-tf-from" data-cr-tf="from" type="text" value="${esc(t.from || '')}" placeholder="原始债权人/转让方">
+      <input class="cr-tf-to" data-cr-tf="to" type="text" value="${esc(t.to || '')}" placeholder="受让方">
+      <input class="cr-tf-amt" data-cr-tf="amount" type="text" value="${esc(t.amount || '')}" placeholder="债权金额">
+      <input class="cr-tf-app" data-cr-tf="applicant" type="text" value="${esc(t.applicant || '')}" placeholder="申请执行人">
+      <button type="button" class="mini danger cr-tf-del" data-cr-tf-del>删</button>
+    </div>`;
+  }
+  function creditorEditorHtml(holders) {
+    const list = Array.isArray(holders) ? holders : [];
+    return `<div class="fld wide"><span>债权持有人（多项，每位可展开录入债权流转明细）</span>
+      <div class="cr-editor" data-cr-editor>${list.length ? list.map(crHolderHtml).join('') : '<div class="cr-empty">暂无债权持有人，点击「+ 添加债权持有人」录入。</div>'}
+        <button type="button" class="mini cr-add" data-cr-add>+ 添加债权持有人</button>
+      </div></div>`;
+  }
+  function crDetailHtml(holders) {
+    const list = Array.isArray(holders) ? holders : [];
+    if (!list.length) return '<div class="kv"><span class="kv-k">债权持有人</span><span class="kv-v">—</span></div>';
+    const rows = list.map((h) => {
+      const open = state.openCreditors[h.id];
+      const orig = (h.transfers && h.transfers.length) ? (h.transfers[0].from || '—') : '—';
+      const tl = (h.transfers && h.transfers.length) ? h.transfers.map((t) => `<li class="cr-tl-node"><div class="cr-tl-dot"></div><div class="cr-tl-body"><div class="cr-tl-date">${esc(t.date || '—')}</div><div class="cr-tl-flow">${esc(t.from || '')} <span class="cr-tl-arrow">→</span> ${esc(t.to || '')}</div><div class="cr-tl-meta">债权金额：<b>${esc(t.amount || '—')}</b>　申请执行人：${esc(t.applicant || '—')}</div></div></li>`).join('') : '<li class="cr-tl-empty">暂无流转记录</li>';
+      return `<div class="cr-detail-holder" data-cr-id="${esc(h.id)}">
+        <div class="cr-detail-head" data-act="cred-toggle" data-id="${esc(h.id)}">
+          <span class="cr-detail-name">${esc(h.name || '未命名持有人')}</span>
+          <span class="cr-detail-sub">原始债权人：${esc(orig)} · ${(h.transfers || []).length} 次流转 ${open ? '▲' : '▼'}</span>
+        </div>
+        ${open ? `<div class="cr-tl"><ul>${tl}</ul></div>` : ''}
+      </div>`;
+    }).join('');
+    return `<div class="kv kv-wide"><span class="kv-k">债权持有人（${list.length} 项）</span><div class="kv-v cr-detail">${rows}</div></div>`;
+  }
+  function collectCreditorItems() {
+    const ed = $('#modal-body [data-cr-editor]'); if (!ed) return [];
+    const out = [];
+    ed.querySelectorAll('[data-cr-holder]').forEach((h) => {
+      const name = (h.querySelector('[data-cr="name"]').value || '').trim();
+      const transfers = [];
+      h.querySelectorAll('[data-cr-tf]').forEach((r) => {
+        const date = (r.querySelector('[data-cr-tf="date"]').value || '').trim();
+        const from = (r.querySelector('[data-cr-tf="from"]').value || '').trim();
+        const to = (r.querySelector('[data-cr-tf="to"]').value || '').trim();
+        const amount = (r.querySelector('[data-cr-tf="amount"]').value || '').trim();
+        const applicant = (r.querySelector('[data-cr-tf="applicant"]').value || '').trim();
+        if (!date && !from && !to && !amount && !applicant) return;
+        transfers.push({ id: LB.util.uid('tf'), date: date, from: from, to: to, amount: amount, applicant: applicant });
+      });
+      if (!name && !transfers.length) return;
+      out.push({ id: h.dataset.id || LB.util.uid('cr'), name: name, transfers: transfers });
+    });
+    return out;
+  }
+  function bindCreditorEditor() {
+    const ed = $('#modal-body [data-cr-editor]'); if (!ed) return;
+    ed.addEventListener('click', (ev) => {
+      if (ev.target.closest('[data-cr-add]')) { const empty = ed.querySelector('.cr-empty'); if (empty) empty.remove(); ed.insertAdjacentHTML('beforeend', crHolderHtml({ id: LB.util.uid('cr') })); }
+      else if (ev.target.closest('[data-cr-del]')) { const h = ev.target.closest('[data-cr-holder]'); if (h) h.remove(); if (!ed.querySelector('[data-cr-holder]')) ed.insertAdjacentHTML('afterbegin', '<div class="cr-empty">暂无债权持有人，点击「+ 添加债权持有人」录入。</div>'); }
+      else if (ev.target.closest('[data-cr-add-tf]')) { const h = ev.target.closest('[data-cr-holder]'); const tf = h.querySelector('.cr-transfers'); const empty = tf.querySelector('.cr-empty-sm'); if (empty) empty.remove(); tf.insertAdjacentHTML('beforeend', crTransferRowHtml({})); }
+      else if (ev.target.closest('[data-cr-tf-del]')) { const r = ev.target.closest('[data-cr-tf]'); const tf = r.closest('.cr-transfers'); if (r) r.remove(); if (!tf.querySelector('[data-cr-tf]')) tf.insertAdjacentHTML('afterbegin', '<div class="cr-empty-sm">暂无流转记录，点击「+ 添加流转」录入。</div>'); }
     });
   }
 
@@ -312,7 +403,9 @@
       { key: 'name', label: '项目名称', type: 'text', wide: true, ph: '如：百高项目债权处置' },
       { key: 'status', label: '状态', type: 'select', options: ['进行中', '已暂停', '已完成', '已结案'] },
       { key: 'category', label: '项目类别', type: 'select', options: PROJ_CATEGORIES },
-      { key: 'tags', label: '标签（逗号分隔）', type: 'text', wide: true }
+      { key: 'tags', label: '标签（逗号分隔）', type: 'text', wide: true },
+      { key: 'cause', label: '案由', type: 'text' },
+      { key: 'caseNo', label: '主案号', type: 'text' }
     ] },
     { section: '当事人信息', fields: [
       { key: 'party', label: '当事人（我方委托人）', type: 'text' },
@@ -321,10 +414,9 @@
       { key: 'contactContact', label: '对接人联系方式', type: 'text' }
     ] },
     { section: '合同信息', fields: [
-      { key: 'contractLawyer', label: '代理合同及代理律师', type: 'text', wide: true },
       { key: 'contractName', label: '合同名称', type: 'text' },
       { key: 'contractNo', label: '合同编号', type: 'text' },
-      { key: 'cause', label: '案由', type: 'text' },
+      { key: 'agentLawyer', label: '代理律师', type: 'text', wide: true },
       { key: 'signDate', label: '签约时间', type: 'date' }
     ] },
     { section: '费用信息', fields: [
@@ -341,10 +433,6 @@
       { key: 'hearingDate', label: '开庭日期', type: 'datetime' },
       { key: 'contractExpiryDate', label: '合同到期日', type: 'date' },
       { key: 'renewalDate', label: '查封到期提醒日', type: 'date' }
-    ] },
-    { section: '关联说明（自由文本）', fields: [
-      { key: 'relatedCases', label: '关联案件备注（选填）', type: 'text', wide: true },
-      { key: 'caseNo', label: '主案号', type: 'text' }
     ] }
   ];
 
@@ -365,7 +453,7 @@
     ] },
     '破产类': { modules: [
       { section: '破产要素', fields: [
-        { key: 'creditor', label: '债权持有人', type: 'text' },
+        { key: 'creditors', label: '债权持有人（多项，点击展开债权流转明细）', type: 'creditors', wide: true },
         { key: 'debtor', label: '债务人', type: 'text' },
         { key: 'admin', label: '管理人', type: 'text' },
         { key: 'claimAmount', label: '债权金额', type: 'text' },
@@ -382,6 +470,7 @@
   }
   function projectField(f, p) {
     if (f.type === 'seizures') return szEditorHtml(p ? p.seizures : []);
+    if (f.type === 'creditors') return creditorEditorHtml(p ? p.creditors : []);
     let val = p ? p[f.key] : '';
     if (f.type === 'date' && val) val = ('' + val).slice(0, 10);
     if (f.type === 'datetime' && val) val = ('' + val).slice(0, 16);
@@ -407,7 +496,7 @@
   function viewProjects() {
     const f = state.projFilter;
     let list = S.listProjects();
-    if (f.q) list = list.filter((p) => (p.name + (p.party || '') + (p.opponent || '') + (p.caseNo || '') + (p.cause || '') + (p.contractLawyer || '') + (p.category || '')).toLowerCase().indexOf(f.q.toLowerCase()) >= 0);
+    if (f.q) list = list.filter((p) => (p.name + (p.party || '') + (p.opponent || '') + (p.caseNo || '') + (p.cause || '') + (p.agentLawyer || '') + (p.category || '')).toLowerCase().indexOf(f.q.toLowerCase()) >= 0);
     if (f.status) list = list.filter((p) => p.status === f.status);
     if (f.cause) list = list.filter((p) => p.cause === f.cause);
     if (f.tag) list = list.filter((p) => (p.tags || []).indexOf(f.tag) >= 0);
@@ -449,7 +538,7 @@
   function projDetailHtml(p) {
     const tasks = S.listTasks().filter((t) => t.projectId === p.id);
     const mods = projectModules(p);
-    const secHtml = mods.map((m) => `<div><div class="kv-sec">${m.section}</div>${m.fields.map((f) => f.key === 'seizures' ? szDetailHtml(p.seizures) : kv(f.label, formatFieldValue(p[f.key], f.type))).join('')}</div>`).join('');
+    const secHtml = mods.map((m) => `<div><div class="kv-sec">${m.section}</div>${m.fields.map((f) => f.key === 'seizures' ? szDetailHtml(p.seizures) : f.key === 'creditors' ? crDetailHtml(p.creditors) : kv(f.label, formatFieldValue(p[f.key], f.type))).join('')}</div>`).join('');
     const notesHtml = (p.notes && p.notes.length) ? p.notes.map((d, i) => `<li><span class="prog-d">${esc(d.date || '')}</span><span class="prog-c">${esc(d.content || '')}</span><span class="prog-a">${esc(d.recipient ? ('接收人：' + d.recipient) : '')}${d.archiveLocation ? (' · 位置：' + d.archiveLocation) : ''}${d.archiveCabinet ? (' · 柜：' + d.archiveCabinet) : ''}${d.author ? (' · ' + d.author) : ''} <button class="mini danger" data-act="proj-delnote" data-id="${p.id}" data-doc="${i}">删</button></span></li>`).join('') : '<li class="empty">暂无备注</li>';
     return `<div class="proj-detail">
       <div class="kv-grid">${secHtml}</div>
@@ -459,7 +548,7 @@
       <div class="kv-sec">其他备注</div>
       <ul class="prog">${notesHtml}</ul>
       <div class="kv-sec">进展状态</div>
-      <ul class="prog">${(p.progress || []).map((x) => `<li><span class="prog-d">${esc(x.date)}</span><span class="prog-c">${esc(x.content)}</span><span class="prog-a">${esc(x.author)}</span></li>`).join('') || '<li class="empty">暂无进展</li>'}</ul>
+      <ul class="prog">${(p.progress || []).map((x, i) => `<li><span class="prog-d">${esc(x.date)}</span><span class="prog-c">${esc(x.content)}</span><span class="prog-a"><button class="mini" data-act="proj-editprog" data-id="${p.id}" data-idx="${i}">编辑</button> <button class="mini danger" data-act="proj-delprog" data-id="${p.id}" data-idx="${i}">删</button></span></li>`).join('') || '<li class="empty">暂无进展</li>'}</ul>
       <div class="kv-sec">关联任务</div>
       <ul class="prog">${tasks.map((t) => `<li><span class="prog-d">${fmtDate(t.dueDate)}</span><span class="prog-c">${esc(t.title)}</span><span class="prog-a"><span class="st st-${taskStatusClass(t.status)} st-act" data-act="task-status" data-id="${t.id}">${t.status}</span></span></li>`).join('') || '<li class="empty">暂无任务</li>'}</ul>
       <div class="ph"><button class="mini" data-act="proj-addtask" data-id="${p.id}">+ 任务</button><button class="mini" data-act="proj-addprog" data-id="${p.id}">+ 进展</button><button class="mini" data-act="proj-edit" data-id="${p.id}">编辑</button><button class="mini danger" data-act="proj-del" data-id="${p.id}">删除</button></div>
@@ -495,6 +584,8 @@
         const ends = data.seizures.map((s) => s.end).filter(Boolean).sort();
         if (ends.length) { const lead = szAddMonths(ends[0], -30); if (lead) data.renewalDate = new Date(lead + 'T00:00:00.000Z').toISOString(); }
       }
+      // 破产要素：仅当类别为破产类时从编辑器收集多项债权持有人；否则保留既有数据
+      data.creditors = (c === '破产类') ? collectCreditorItems() : (base && base.creditors ? base.creditors.slice() : []);
       data.name = data.name || (base && base.name) || '未命名项目';
       data.tags = v.tags ? v.tags.split(/[,，]/).map((s) => s.trim()).filter(Boolean) : (base ? base.tags : []);
       data.notes = (base && base.notes) ? base.notes.slice() : [];
@@ -508,8 +599,8 @@
       closeModal(); render();
     });
     const sel = $('#modal-body [data-field="category"]');
-    if (sel) sel.onchange = () => openProjForm(id, Object.assign(collectForm(), { seizures: collectSeizureItems() }));
-    bindSeizureEditor();
+    if (sel) sel.onchange = () => { const extra = (cat === '破产类') ? { creditors: collectCreditorItems() } : {}; openProjForm(id, Object.assign(collectForm(), { seizures: collectSeizureItems() }, extra)); };
+    bindSeizureEditor(); bindCreditorEditor();
   }
   function bindProjForm(id) { openProjForm(id, null); }
 
@@ -538,9 +629,9 @@
   }
   function caseDetailHtml(p, c) {
     const mods = caseModules(c);
-    const secHtml = mods.map((m) => `<div><div class="kv-sec">${m.section}</div>${m.fields.map((f) => f.key === 'seizures' ? szDetailHtml(c.seizures) : kv(f.label, formatFieldValue(c[f.key], f.type))).join('')}</div>`).join('');
+    const secHtml = mods.map((m) => `<div><div class="kv-sec">${m.section}</div>${m.fields.map((f) => f.key === 'seizures' ? szDetailHtml(c.seizures) : f.key === 'creditors' ? crDetailHtml(c.creditors) : kv(f.label, formatFieldValue(c[f.key], f.type))).join('')}</div>`).join('');
     const notesHtml = (c.notes && c.notes.length) ? c.notes.map((d, i) => `<li><span class="prog-d">${esc(d.date || '')}</span><span class="prog-c">${esc(d.content || '')}</span><span class="prog-a">${esc(d.recipient ? ('接收人：' + d.recipient) : '')}${d.archiveLocation ? (' · 位置：' + d.archiveLocation) : ''}${d.archiveCabinet ? (' · 柜：' + d.archiveCabinet) : ''}${d.author ? (' · ' + d.author) : ''} <button class="mini danger" data-act="case-delnote" data-pid="${p.id}" data-cid="${c.id}" data-doc="${i}">删</button></span></li>`).join('') : '<li class="empty">暂无备注</li>';
-    const progHtml = (c.progress && c.progress.length) ? c.progress.map((x) => `<li><span class="prog-d">${esc(x.date)}</span><span class="prog-c">${esc(x.content)}</span><span class="prog-a">${esc(x.author)}</span></li>`).join('') : '<li class="empty">暂无进展</li>';
+    const progHtml = (c.progress && c.progress.length) ? c.progress.map((x, i) => `<li><span class="prog-d">${esc(x.date)}</span><span class="prog-c">${esc(x.content)}</span><span class="prog-a"><button class="mini" data-act="case-editprog" data-pid="${p.id}" data-cid="${c.id}" data-idx="${i}">编辑</button> <button class="mini danger" data-act="case-delprog" data-pid="${p.id}" data-cid="${c.id}" data-idx="${i}">删</button></span></li>`).join('') : '<li class="empty">暂无进展</li>';
     return `<div class="case-detail">
       <div class="kv-grid">${secHtml}</div>
       <div class="kv-sec">其他备注</div>
@@ -581,6 +672,8 @@
         const ends = data.seizures.map((s) => s.end).filter(Boolean).sort();
         if (ends.length) { const lead = szAddMonths(ends[0], -30); if (lead) data.renewalDate = new Date(lead + 'T00:00:00.000Z').toISOString(); }
       }
+      // 破产要素：仅当类别为破产类时从编辑器收集多项债权持有人；否则保留既有数据
+      data.creditors = (cc === '破产类') ? collectCreditorItems() : (base && base.creditors ? base.creditors.slice() : []);
       data.name = data.name || (base && base.name) || '未命名案件';
       data.tags = v.tags ? v.tags.split(/[,，]/).map((s) => s.trim()).filter(Boolean) : (base ? base.tags : []);
       data.notes = (base && base.notes) ? base.notes.slice() : [];
@@ -593,8 +686,8 @@
       closeModal(); render();
     });
     const sel = $('#modal-body [data-field="category"]');
-    if (sel) sel.onchange = () => openCaseForm(projectId, caseId, Object.assign(collectForm(), { seizures: collectSeizureItems() }));
-    bindSeizureEditor();
+    if (sel) sel.onchange = () => { const extra = (cat === '破产类') ? { creditors: collectCreditorItems() } : {}; openCaseForm(projectId, caseId, Object.assign(collectForm(), { seizures: collectSeizureItems() }, extra)); };
+    bindSeizureEditor(); bindCreditorEditor();
   }
 
   /* ===================== 智能提醒（独立视图） ===================== */
@@ -776,12 +869,17 @@
       case 'proj-del': confirmModal('确认删除该项目及其关联任务？此操作不可撤销。', () => { S.deleteProject(id); if (state.projOpenId === id) state.projOpenId = null; render(); }, { okText: '删除项目' }); break;
       case 'proj-addtask': openModal('新建关联任务', taskForm({ projectId: id }), (v) => { S.saveTask({ title: v.title, priority: v.priority, projectId: id, dueDate: v.dueDate ? new Date(v.dueDate).toISOString() : null, status: v.status }, true); closeModal(); render(); }); break;
       case 'proj-addprog': openModal('添加进展', field('content', '进展说明', 'textarea', ''), (v) => { S.addProgress(id, { content: v.content }); closeModal(); render(); }); break;
+      case 'proj-editprog': { const o = S.getProject(id); const x = o && o.progress[parseInt(el.dataset.idx, 10)]; if (x) openProgressEditor('编辑进展', x, (note) => { S.updateProgress(id, parseInt(el.dataset.idx, 10), note); render(); }); break; }
+      case 'proj-delprog': confirmModal('确认删除该进展记录？删除后不可恢复。', () => { S.deleteProgress(id, parseInt(el.dataset.idx, 10)); render(); }); break;
       case 'proj-delnote': confirmModal('确认删除该备注？', () => { S.deleteNote(id, parseInt(el.dataset.doc, 10)); render(); }); break;
+      case 'cred-toggle': { const cid = el.dataset.id; state.openCreditors[cid] = !state.openCreditors[cid]; render(); break; }
       case 'case-new': openCaseForm(id, null); break;
       case 'case-toggle': { const cid = el.dataset.cid; state.openCases[cid] = !state.openCases[cid]; render(); break; }
       case 'case-edit': openCaseForm(el.dataset.pid, el.dataset.cid); break;
       case 'case-del': confirmModal('确认删除该关联案件？删除后不可恢复。', () => { S.deleteCase(el.dataset.pid, el.dataset.cid); render(); }); break;
       case 'case-addprog': openModal('添加案件进展', field('content', '进展说明', 'textarea', ''), (v) => { S.addCaseProgress(el.dataset.pid, el.dataset.cid, { content: v.content }); closeModal(); render(); }); break;
+      case 'case-editprog': { const o = S.getCase(el.dataset.pid, el.dataset.cid); const x = o && o.progress[parseInt(el.dataset.idx, 10)]; if (x) openProgressEditor('编辑案件进展', x, (note) => { S.updateCaseProgress(el.dataset.pid, el.dataset.cid, parseInt(el.dataset.idx, 10), note); render(); }); break; }
+      case 'case-delprog': confirmModal('确认删除该案件进展？删除后不可恢复。', () => { S.deleteCaseProgress(el.dataset.pid, el.dataset.cid, parseInt(el.dataset.idx, 10)); render(); }); break;
       case 'case-delnote': confirmModal('确认删除该案件备注？', () => { S.deleteCaseNote(el.dataset.pid, el.dataset.cid, parseInt(el.dataset.doc, 10)); render(); }); break;
       case 'evt-new': openModal('新建日程', field('title', '标题', 'text', '') + field('start', '开始时间', 'datetime', '') + field('end', '结束时间', 'datetime', ''), (v) => { S.saveManualEvent({ title: v.title, start: v.start ? new Date(v.start).toISOString() : new Date().toISOString(), end: v.end ? new Date(v.end).toISOString() : null, projectId: null }, true); closeModal(); render(); }); break;
       case 'evt-open': { const k = el.dataset.kind, ref = el.dataset.ref; if ((k === 'task') && ref) { const t = S.getTask(ref); if (t) openModal('任务', `<div class="detail"><div class="dl"><div><b>任务</b>${esc(t.title)}</div><div><b>优先级</b>${t.priority}</div><div><b>截止</b>${fmtDT(t.dueDate)}</div><div><b>状态</b>${t.status}</div></div></div>`, null, { readonly: true }); } else if ((k === 'hearing' || k === 'contract' || k === 'renewal') && ref) { state.projOpenId = ref; navigate('projects'); } break; }

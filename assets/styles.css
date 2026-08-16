@@ -422,6 +422,39 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: var(--fw-bold); col
 .sz-detail-row { font-size: var(--fs-sm); color: var(--ink-2); line-height: 1.45; }
 .sz-detail-row b { color: var(--ink); font-weight: var(--fw-semibold); }
 
+/* ===================== 破产要素：多项债权持有人 + 债权流转时间轴 ===================== */
+.cr-editor { display: flex; flex-direction: column; gap: 10px; margin-top: 2px; }
+.cr-holder { background: var(--surface-2); border: 1px solid var(--line-2); border-radius: var(--radius-sm); padding: 9px 11px; }
+.cr-holder-head { display: grid; grid-template-columns: minmax(0, 1fr) 40px; gap: 8px; align-items: center; }
+.cr-name, .cr-tf-row input { background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--radius-sm); padding: 7px 9px; color: var(--ink); width: 100%; min-width: 0; }
+.cr-name:focus, .cr-tf-row input:focus { outline: none; border-color: var(--mc); }
+.cr-del { padding: 7px 0; line-height: 1; }
+.cr-transfers { margin-top: 9px; border-top: 1px dashed var(--line); padding-top: 9px; display: flex; flex-direction: column; gap: 7px; }
+.cr-transfers-title { font-size: var(--fs-xs); color: var(--muted); margin-bottom: 2px; }
+.cr-tf-row { display: grid; grid-template-columns: 110px minmax(0, 1fr) minmax(0, 1fr) 120px 110px 32px; gap: 7px; align-items: center; }
+.cr-tf-row input::placeholder { color: var(--muted); opacity: .85; }
+.cr-tf-del { padding: 6px 0; line-height: 1; }
+.cr-empty { font-size: var(--fs-sm); color: var(--muted); padding: 2px 0; }
+.cr-empty-sm { font-size: var(--fs-xs); color: var(--muted); padding: 1px 0; }
+.cr-add, .cr-add-tf { align-self: flex-start; }
+/* 详情：多位债权持有人可折叠 + 流转时间轴 */
+.cr-detail { display: flex; flex-direction: column; gap: 8px; }
+.cr-detail-holder { background: var(--surface-2); border: 1px solid var(--line-2); border-radius: var(--radius-sm); overflow: hidden; }
+.cr-detail-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 11px; cursor: pointer; }
+.cr-detail-head:hover { background: var(--surface); }
+.cr-detail-name { font-weight: var(--fw-semibold); color: var(--ink); }
+.cr-detail-sub { font-size: var(--fs-xs); color: var(--muted); }
+.cr-tl { padding: 4px 12px 12px; border-top: 1px dashed var(--line); }
+.cr-tl ul { list-style: none; margin: 0; padding: 0; }
+.cr-tl-node { position: relative; padding: 8px 0 8px 18px; border-left: 2px solid var(--line-2); }
+.cr-tl-node:last-child { border-left-color: transparent; }
+.cr-tl-dot { position: absolute; left: -6px; top: 12px; width: 10px; height: 10px; border-radius: 50%; background: var(--mc); border: 2px solid var(--surface); }
+.cr-tl-date { font-size: var(--fs-xs); color: var(--muted); }
+.cr-tl-flow { font-size: var(--fs-sm); color: var(--ink); font-weight: var(--fw-semibold); margin: 1px 0; }
+.cr-tl-arrow { color: var(--mc); margin: 0 4px; }
+.cr-tl-meta { font-size: var(--fs-xs); color: var(--ink-2); }
+.cr-tl-empty { font-size: var(--fs-xs); color: var(--muted); padding: 8px 0; }
+
 @keyframes pop { from { transform: scale(.96); opacity: .4; } to { transform: scale(1); opacity: 1; } }
 .panel { animation: pop .28s ease-out; }
 
@@ -473,4 +506,7 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: var(--fw-bold); col
   .sz-row { grid-template-columns: 1fr 1fr; }
   .sz-computed { grid-column: 1 / -1; }
   .sz-add { align-self: stretch; }
+  .cr-tf-row { grid-template-columns: 1fr 1fr; }
+  .cr-tf-del { grid-column: 1 / -1; }
+  .cr-holder-head { grid-template-columns: minmax(0, 1fr) 40px; }
 }
