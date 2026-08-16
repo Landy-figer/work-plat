@@ -20,7 +20,7 @@
 
   const state = {
     view: 'dashboard', calMode: 'week', calDate: new Date(),
-    projFilter: { q: '', status: '', cause: '', tag: '' }, projOpenId: null,
+    projFilter: { q: '', status: '', cause: '', tag: '' }, projOpenId: null, openCases: {},
     reportPreview: null, lastAppliedRaw: '', rpStatus: '', lawQ: '', validateHtml: ''
   };
   let rpTimer = null;
@@ -292,9 +292,9 @@
       { key: 'contractExpiryDate', label: '合同到期日', type: 'date' },
       { key: 'renewalDate', label: '续费提醒日', type: 'date' }
     ] },
-    { section: '关联案件', fields: [
-      { key: 'relatedCases', label: '涉及/关联案件', type: 'text', wide: true },
-      { key: 'caseNo', label: '案号', type: 'text' }
+    { section: '关联说明（自由文本）', fields: [
+      { key: 'relatedCases', label: '关联案件备注（选填）', type: 'text', wide: true },
+      { key: 'caseNo', label: '主案号', type: 'text' }
     ] }
   ];
 
@@ -345,6 +345,11 @@
     if (type === 'date' || type === 'datetime') return fmtDate(v);
     return v;
   }
+  // 关联案件 schema：复用项目全维度字段，仅将「项目名称」标签改为「案件名称」
+  function caseModules(c) {
+    const mods = projectModules(c);
+    return mods.map((m) => ({ section: m.section, fields: m.fields.map((f) => f.key === 'name' ? Object.assign({}, f, { label: '案件名称', ph: '如：变更执行人执行案' }) : f) }));
+  }
   // 对外暴露 schema（通用结构即一等公民：新增类别只需在 PROJ_CATEGORY_TEMPLATES 加模板）
   LB.projectSchema = { categories: PROJ_CATEGORIES, genericModules: PROJ_GENERIC_MODULES, categoryTemplates: PROJ_CATEGORY_TEMPLATES, modules: projectModules };
 
@@ -392,6 +397,9 @@
     const docsHtml = (p.docs && p.docs.length) ? p.docs.map((d, i) => `<li><span class="prog-d">${esc(d.date || '')}</span><span class="prog-c">${esc(d.name)}</span><span class="prog-a">${esc(d.note || '')} · ${esc(d.by || '')} <button class="mini danger" data-act="proj-deldoc" data-id="${p.id}" data-doc="${i}">删</button></span></li>`).join('') : '<li class="empty">暂无文书</li>';
     return `<div class="proj-detail">
       <div class="kv-grid">${secHtml}</div>
+      <div class="kv-sec">关联案件（${esc(String((p.cases || []).length))}）</div>
+      <div class="cases-area">${casesHtml(p)}</div>
+      <div class="ph"><button class="mini" data-act="case-new" data-id="${p.id}">+ 关联案件</button></div>
       <div class="kv-sec">文书材料</div>
       <ul class="prog">${docsHtml}</ul>
       <div class="kv-sec">进展状态</div>
@@ -429,6 +437,7 @@
       data.tags = v.tags ? v.tags.split(/[,，]/).map((s) => s.trim()).filter(Boolean) : (base ? base.tags : []);
       data.docs = (base && base.docs) ? base.docs.slice() : [];
       data.progress = (base && base.progress) ? base.progress.slice() : [];
+      data.cases = (base && base.cases) ? base.cases.slice() : [];
       if (id) { data.id = id; S.saveProject(data, false); }
       else { S.saveProject(data, true); }
       const pid = id || data.id;
@@ -440,6 +449,83 @@
     if (sel) sel.onchange = () => openProjForm(id, collectForm());
   }
   function bindProjForm(id) { openProjForm(id, null); }
+
+  /* ===================== 关联案件（每个案件独立区块，与项目同维度） ===================== */
+  function casesHtml(p) {
+    const cases = p.cases || [];
+    if (!cases.length) return '<div class="empty"><p>暂无关联案件，点击「+ 关联案件」登记与项目同维度的案件详情。</p></div>';
+    return `<ul class="card-list cases-list">${cases.map((c) => {
+      const open = state.openCases[c.id];
+      const subBits = [esc(c.category || '其他类'), c.cause ? esc(c.cause) : null, c.caseNo ? '案号 ' + esc(c.caseNo) : null, (c.progress ? c.progress.length : 0) + ' 条进展'].filter(Boolean);
+      return `<li class="case-block">
+        <div class="case-block-head" data-act="case-toggle" data-pid="${p.id}" data-cid="${c.id}">
+          <div class="card-pill-meta"><span class="st ${STAT[c.status] || ''}">${c.status || '进行中'}</span></div>
+          <div class="case-block-main">
+            <div class="case-block-title">${esc(c.name || '未命名案件')}</div>
+            <div class="case-block-sub">${subBits.join(' · ')}</div>
+          </div>
+          <div class="case-block-actions">
+            <button class="mini" data-act="case-edit" data-pid="${p.id}" data-cid="${c.id}">编辑</button>
+            <button class="mini danger" data-act="case-del" data-pid="${p.id}" data-cid="${c.id}">删除</button>
+          </div>
+        </div>
+        ${open ? caseDetailHtml(p, c) : ''}
+      </li>`;
+    }).join('')}</ul>`;
+  }
+  function caseDetailHtml(p, c) {
+    const mods = caseModules(c);
+    const secHtml = mods.map((m) => `<div><div class="kv-sec">${m.section}</div>${m.fields.map((f) => kv(f.label, formatFieldValue(c[f.key], f.type))).join('')}</div>`).join('');
+    const docsHtml = (c.docs && c.docs.length) ? c.docs.map((d, i) => `<li><span class="prog-d">${esc(d.date || '')}</span><span class="prog-c">${esc(d.name)}</span><span class="prog-a">${esc(d.note || '')} · ${esc(d.by || '')} <button class="mini danger" data-act="case-deldoc" data-pid="${p.id}" data-cid="${c.id}" data-doc="${i}">删</button></span></li>`).join('') : '<li class="empty">暂无文书</li>';
+    const progHtml = (c.progress && c.progress.length) ? c.progress.map((x) => `<li><span class="prog-d">${esc(x.date)}</span><span class="prog-c">${esc(x.content)}</span><span class="prog-a">${esc(x.author)}</span></li>`).join('') : '<li class="empty">暂无进展</li>';
+    return `<div class="case-detail">
+      <div class="kv-grid">${secHtml}</div>
+      <div class="kv-sec">文书材料</div>
+      <ul class="prog">${docsHtml}</ul>
+      <div class="kv-sec">进展状态</div>
+      <ul class="prog">${progHtml}</ul>
+      <div class="ph"><button class="mini" data-act="case-addprog" data-pid="${p.id}" data-cid="${c.id}">+ 进展</button><button class="mini" data-act="case-edit" data-pid="${p.id}" data-cid="${c.id}">编辑</button><button class="mini danger" data-act="case-del" data-pid="${p.id}" data-cid="${c.id}">删除</button></div>
+    </div>`;
+  }
+  function caseForm(c) {
+    c = c || {};
+    const mods = caseModules(c);
+    const secs = mods.map((m) => `<div class="form-sec"><div class="kv-sec">${m.section}</div><div class="form-grid">${m.fields.map((f) => projectField(f, c)).join('')}</div></div>`).join('');
+    const docsSec = `<div class="form-sec"><div class="kv-sec">文书材料（本次新增，留空忽略）</div><div class="form-grid">${field('docName', '文书名称', 'text', '')}${field('docNote', '说明', 'text', '', { wide: true })}</div></div>`;
+    const progSec = `<div class="form-sec"><div class="kv-sec">进展状态（本次新增，留空忽略）</div><div class="form-grid">${field('progressNote', '本次进展', 'textarea', '', { wide: true, rows: 2 })}</div></div>`;
+    return secs + docsSec + progSec;
+  }
+  function openCaseForm(projectId, caseId, draft) {
+    const p = S.getProject(projectId); if (!p) return;
+    const base = caseId ? (S.getCase(projectId, caseId) || {}) : {};
+    const c = Object.assign({}, base, draft || {});
+    if (!c.category) c.category = p.category || '其他类';
+    const cat = c.category;
+    openModal(caseId ? '编辑关联案件（' + cat + '）' : '新建关联案件（' + cat + '）', caseForm(c), (v) => {
+      const cc = v.category || '其他类';
+      const tpl = PROJ_CATEGORY_TEMPLATES[cc] || PROJ_CATEGORY_TEMPLATES['其他类'];
+      const allFields = PROJ_GENERIC_MODULES.concat(tpl.modules).reduce((a, m) => a.concat(m.fields), []);
+      const data = {};
+      allFields.forEach((f) => {
+        let val = v[f.key];
+        if (f.type === 'date' || f.type === 'datetime') val = val ? new Date(val).toISOString() : null;
+        else val = (val == null ? '' : val);
+        data[f.key] = val;
+      });
+      data.name = data.name || (base && base.name) || '未命名案件';
+      data.tags = v.tags ? v.tags.split(/[,，]/).map((s) => s.trim()).filter(Boolean) : (base ? base.tags : []);
+      data.docs = (base && base.docs) ? base.docs.slice() : [];
+      data.progress = (base && base.progress) ? base.progress.slice() : [];
+      if (caseId) { data.id = caseId; S.saveCase(projectId, data, false); }
+      else { S.saveCase(projectId, data, true); }
+      const cid = caseId || data.id;
+      if (v.docName) S.addCaseDoc(projectId, cid, { name: v.docName, note: v.docNote });
+      if (v.progressNote) S.addCaseProgress(projectId, cid, { content: v.progressNote });
+      closeModal(); render();
+    });
+    const sel = $('#modal-body [data-field="category"]');
+    if (sel) sel.onchange = () => openCaseForm(projectId, caseId, collectForm());
+  }
 
   /* ===================== 智能提醒（独立视图） ===================== */
   function viewReminders() {
@@ -514,7 +600,7 @@
   function viewExport() {
     return `<div class="export-wrap">
       <section class="panel"><h3 class="tt">报表导出</h3><p class="hint">CSV 可用 Excel 打开，JSON 用于备份与多端恢复。</p>
-        <div class="exp-btns"><button class="btn" data-act="exp" data-t="projects">导出案件台账(CSV)</button><button class="btn" data-act="exp" data-t="tasks">导出任务(CSV)</button><button class="btn" data-act="exp" data-t="clients">导出对接人(CSV)</button><button class="btn" data-act="exp" data-t="judges">导出经办法官(CSV)</button><button class="btn primary" data-act="exp-json">导出全量备份(JSON)</button></div>
+        <div class="exp-btns"><button class="btn" data-act="exp" data-t="projects">导出案件台账(CSV)</button><button class="btn" data-act="exp" data-t="cases">导出关联案件(CSV)</button><button class="btn" data-act="exp" data-t="tasks">导出任务(CSV)</button><button class="btn" data-act="exp" data-t="clients">导出对接人(CSV)</button><button class="btn" data-act="exp" data-t="judges">导出经办法官(CSV)</button><button class="btn primary" data-act="exp-json">导出全量备份(JSON)</button></div>
         <p class="sync-state">上次同步：${S.meta().lastSync ? fmtDT(S.meta().lastSync) : '—'}</p></section>
       <section class="panel"><h3 class="tt">数据恢复 / 多端同步</h3><p class="hint">导入 JSON 备份以恢复数据；同源多标签页通过 BroadcastChannel 实时同步。</p>
         <div class="exp-btns"><label class="btn">选择备份文件导入<input type="file" id="imp-file" accept="application/json" hidden></label><button class="btn danger" data-act="reset-demo">恢复示范数据</button></div></section>
@@ -619,6 +705,12 @@
       case 'proj-addtask': openModal('新建关联任务', taskForm({ projectId: id }), (v) => { S.saveTask({ title: v.title, priority: v.priority, projectId: id, dueDate: v.dueDate ? new Date(v.dueDate).toISOString() : null, status: v.status }, true); closeModal(); render(); }); break;
       case 'proj-addprog': openModal('添加进展', field('content', '进展说明', 'textarea', ''), (v) => { S.addProgress(id, { content: v.content }); closeModal(); render(); }); break;
       case 'proj-deldoc': confirmModal('确认删除该文书？', () => { S.deleteDoc(id, parseInt(el.dataset.doc, 10)); render(); }); break;
+      case 'case-new': openCaseForm(id, null); break;
+      case 'case-toggle': { const cid = el.dataset.cid; state.openCases[cid] = !state.openCases[cid]; render(); break; }
+      case 'case-edit': openCaseForm(el.dataset.pid, el.dataset.cid); break;
+      case 'case-del': confirmModal('确认删除该关联案件？删除后不可恢复。', () => { S.deleteCase(el.dataset.pid, el.dataset.cid); render(); }); break;
+      case 'case-addprog': openModal('添加案件进展', field('content', '进展说明', 'textarea', ''), (v) => { S.addCaseProgress(el.dataset.pid, el.dataset.cid, { content: v.content }); closeModal(); render(); }); break;
+      case 'case-deldoc': confirmModal('确认删除该案件文书？', () => { S.deleteCaseDoc(el.dataset.pid, el.dataset.cid, parseInt(el.dataset.doc, 10)); render(); }); break;
       case 'evt-new': openModal('新建日程', field('title', '标题', 'text', '') + field('start', '开始时间', 'datetime', '') + field('end', '结束时间', 'datetime', ''), (v) => { S.saveManualEvent({ title: v.title, start: v.start ? new Date(v.start).toISOString() : new Date().toISOString(), end: v.end ? new Date(v.end).toISOString() : null, projectId: null }, true); closeModal(); render(); }); break;
       case 'evt-open': { const k = el.dataset.kind, ref = el.dataset.ref; if ((k === 'task') && ref) { const t = S.getTask(ref); if (t) openModal('任务', `<div class="detail"><div class="dl"><div><b>任务</b>${esc(t.title)}</div><div><b>优先级</b>${t.priority}</div><div><b>截止</b>${fmtDT(t.dueDate)}</div><div><b>状态</b>${t.status}</div></div></div>`, null, { readonly: true }); } else if ((k === 'hearing' || k === 'contract' || k === 'renewal') && ref) { state.projOpenId = ref; navigate('projects'); } break; }
       case 'cal-prev': state.calDate = shift(state.calDate, state.calMode === 'week' ? -7 : -1); render(); break;

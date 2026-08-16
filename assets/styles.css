@@ -267,6 +267,28 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: var(--fw-bold); col
 .prog li { display: grid; grid-template-columns: 100px 1fr auto; gap: 10px; font-size: var(--fs-sm); color: var(--ink-2); padding: 9px 11px; background: var(--surface); border-radius: var(--radius-sm); border: 1px solid var(--line); }
 .prog-d { color: var(--muted); font-family: var(--font-ui); } .prog-c { color: var(--ink); font-family: var(--font-note); } .prog-a { color: var(--muted); white-space: nowrap; }
 
+/* ============ 关联案件（独立区块 · 每个案件单独成行，与项目同维度） ============ */
+.cases-area { margin: var(--space-2xs) 0 var(--space-sm); }
+.cases-list { display: flex; flex-direction: column; gap: 10px; list-style: none; padding: 0; margin: 0; }
+.case-block { border: 1px solid var(--line); border-left: 3px solid var(--c-proj); border-radius: var(--radius); background: var(--surface); overflow: hidden; transition: background .18s ease-out, border-color .18s ease-out, box-shadow .18s ease-out; }
+.case-block:hover { background: var(--surface-2); box-shadow: var(--shadow-sm); }
+.case-block-head { display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; gap: var(--space-md); align-items: center; padding: 13px 18px; cursor: pointer; }
+.case-block-head .card-pill-meta { display: flex; }
+.case-block-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.case-block-title { font-weight: var(--fw-semibold); color: var(--ink); font-size: var(--fs-md); }
+.case-block-sub { color: var(--ink-2); font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.case-block-actions { display: flex; gap: 6px; }
+.case-detail { padding: var(--space-lg); border-top: 1px dashed var(--line); background: var(--surface-2); animation: pop .22s ease-out; }
+.case-detail .kv-grid { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.case-detail .kv-sec { color: var(--c-proj); }
+.case-detail .ph { margin-top: var(--space-md); }
+
+/* 手机：案件区块头部改为单列，操作按钮换行 */
+@media (max-width: 640px) {
+  .case-block-head { grid-template-columns: 1fr; gap: var(--space-xs); }
+  .case-block-actions { justify-content: flex-end; }
+}
+
 /* ============ 日程 ============ */
 .seg { display: inline-flex; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 3px; }
 .seg-btn { background: transparent; border: none; color: var(--ink-2); padding: 6px 14px; border-radius: var(--radius-xs); font-weight: 600; }

@@ -3,6 +3,10 @@ workplat.db
 *.db
 server/workplat.db
 
+# 从台账导入的敏感案件数据（含客户/案件信息，绝不提交/推送）
+workbench-import-*.json
+mapping-report-*.txt
+
 # 同步配置（含加密口令，仅本机保存）
 .sync-config.json
 
