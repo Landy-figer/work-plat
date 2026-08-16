@@ -40,11 +40,11 @@ function remoteUrl(cfg) {
 
 function ensureClone(cfg) {
   if (fs.existsSync(cfg.cloneDir)) {
-    execSync('git remote set-url origin ' + remoteUrl(cfg), { cwd: cfg.cloneDir, stdio: 'ignore' });
+    execSync('git remote set-url origin ' + remoteUrl(cfg), { cwd: cfg.cloneDir, stdio: 'ignore', timeout: 8000 });
     return;
   }
   fs.mkdirSync(path.dirname(cfg.cloneDir), { recursive: true });
-  execSync('git clone --quiet ' + remoteUrl(cfg) + ' "' + cfg.cloneDir + '"', { stdio: 'ignore' });
+  execSync('git clone --quiet ' + remoteUrl(cfg) + ' "' + cfg.cloneDir + '"', { stdio: 'ignore', timeout: 60000 });
 }
 
 function tsOf(db) {
@@ -56,12 +56,12 @@ function pushCloud(db, cfg) {
   const file = path.join(cfg.cloneDir, 'workplat.enc');
   fs.writeFileSync(file, encrypt(db, cfg.passphrase));
   const msg = 'sync ' + new Date().toISOString();
-  execSync('git add -A && git commit -q -m "' + msg + '" && git push -q origin ' + (cfg.cloudBranch || 'main'), { cwd: cfg.cloneDir, stdio: 'ignore' });
+  execSync('git add -A && git commit -q -m "' + msg + '" && git push -q origin ' + (cfg.cloudBranch || 'main'), { cwd: cfg.cloneDir, stdio: 'ignore', timeout: 10000 });
 }
 
 function pullCloud(cfg) {
   ensureClone(cfg);
-  execSync('git pull -q origin ' + (cfg.cloudBranch || 'main'), { cwd: cfg.cloneDir, stdio: 'ignore' });
+  execSync('git pull -q origin ' + (cfg.cloudBranch || 'main'), { cwd: cfg.cloneDir, stdio: 'ignore', timeout: 8000 });
   const file = path.join(cfg.cloneDir, 'workplat.enc');
   if (!fs.existsSync(file)) return null;
   return decrypt(fs.readFileSync(file, 'utf8'), cfg.passphrase);
