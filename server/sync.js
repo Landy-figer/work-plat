@@ -11,6 +11,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { exec } = require('child_process');
 const { DatabaseSync } = require('node:sqlite');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -53,6 +54,41 @@ function readBody(req) {
 }
 function localLoad() { try { return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch (e) { return null; } }
 function localSave(db) { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2)); }
+
+/* ---------- 线上只读镜像：把加密密文推到 GitHub Pages 仓库 ----------
+ * 本地每次保存（已加密的 v1: 密文）除本地镜像外，另写 data/workplat.enc.json 到
+ * 项目仓库并 git push origin main，触发 Pages 重建。线上链接拉取该文件解密后即
+ * 与本地内容一致。密文公开但无密码不可读，故安全。仅当 db 为 v1: 字符串才镜像。 */
+const PAGES_DATA = path.join(ROOT, 'data', 'workplat.enc.json');
+let _mirrorBusy = false;
+let _mirrorPending = null;
+function mirrorToPages(sealed) {
+  if (typeof sealed !== 'string' || sealed.indexOf('v1:') !== 0) return;
+  if (_mirrorBusy) { _mirrorPending = sealed; return; }
+  _mirrorBusy = true;
+  const run = (payload) => {
+    try {
+      fs.mkdirSync(path.dirname(PAGES_DATA), { recursive: true });
+      fs.writeFileSync(PAGES_DATA, payload);
+    } catch (e) { console.error('[pages mirror] write', e.message); _mirrorBusy = false; return; }
+    exec('git pull --rebase -q origin main', { cwd: ROOT, timeout: 12000 }, (e1) => {
+      if (e1) console.error('[pages mirror] pull', e1.message);
+      exec('git add data/workplat.enc.json', { cwd: ROOT, timeout: 5000 }, (e2) => {
+        if (e2) console.error('[pages mirror] add', e2.message);
+        exec('git commit -q -m "mirror: 加密数据同步到线上"', { cwd: ROOT, timeout: 5000 }, (e3) => {
+          if (e3) console.error('[pages mirror] commit (可能无变化)', e3.message);
+          exec('git push -q origin main', { cwd: ROOT, timeout: 20000 }, (e4) => {
+            if (e4) console.error('[pages mirror] push', e4.message);
+            else console.log('[pages mirror] pushed encrypted data ->', new Date().toISOString());
+            _mirrorBusy = false;
+            if (_mirrorPending && _mirrorPending !== payload) { const n = _mirrorPending; _mirrorPending = null; mirrorToPages(n); }
+          });
+        });
+      });
+    });
+  };
+  run(sealed);
+}
 
 /* ---------- 二次校验规则（与既有 server/index.js 一致） ---------- */
 const PROJ_STATUS = ['进行中', '已暂停', '已完成', '已结案'];
@@ -143,6 +179,7 @@ const server = http.createServer(async (req, res) => {
         localSave(dbObj);
         db.prepare('INSERT INTO snapshots (kind, payload, saved_at) VALUES (?, ?, ?)').run('sealed', dbObj, now);
         if (CLOUD_ON) { try { cloud.pushCloud(dbObj, CFG); } catch (e) { console.error('[cloud push]', e.message); } }
+        mirrorToPages(dbObj); // 异步推到 GitHub Pages（线上只读镜像）
         return send(res, 200, { ok: true, savedAt: now, sealed: true });
       }
       if (!dbObj || typeof dbObj !== 'object') return send(res, 400, { ok: false, error: 'invalid body' });

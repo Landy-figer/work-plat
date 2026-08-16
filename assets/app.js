@@ -798,30 +798,53 @@
     }, 700);
   };
   async function remoteHydrate() {
-    if (!REMOTE) return;
     const V = LB.vault;
     if (V && V.enabled && !V.isUnlocked()) return; // 锁定状态无密钥，跳过（避免拿到密文也无法解密）
-    try {
-      const r = await fetch(API_BASE + '/api/load');
-      const j = await r.json();
-      if (j && j.db) {
-        let remoteDb = j.db;
-        // 服务端返回密文（v1: 前缀）→ 本地用密钥解密
-        if (typeof remoteDb === 'string' && remoteDb.indexOf('v1:') === 0 && V && V.key) {
-          remoteDb = await V.unseal(remoteDb);
-        }
-        if (remoteDb && remoteDb.projects) {
-          const localTs = (S.meta() && S.meta().syncedAt) || null;
-          if (!localTs || (j.savedAt && j.savedAt > localTs)) {
-            S.importJSON(JSON.stringify(remoteDb));
-            S.DB.meta = S.DB.meta || {}; S.DB.meta.syncedAt = j.savedAt;
-            await S.persist();
-          } else if (localTs && (!j.savedAt || localTs > j.savedAt)) {
-            await S.persist(); // 本地较新 → 推回（密文）
+    // 本地 / 8200 ：连本地同步服务
+    if (REMOTE) {
+      try {
+        const r = await fetch(API_BASE + '/api/load');
+        const j = await r.json();
+        if (j && j.db) {
+          let remoteDb = j.db;
+          // 服务端返回密文（v1: 前缀）→ 本地用密钥解密
+          if (typeof remoteDb === 'string' && remoteDb.indexOf('v1:') === 0 && V && V.key) {
+            remoteDb = await V.unseal(remoteDb);
+          }
+          if (remoteDb && remoteDb.projects) {
+            const localTs = (S.meta() && S.meta().syncedAt) || null;
+            if (!localTs || (j.savedAt && j.savedAt > localTs)) {
+              S.importJSON(JSON.stringify(remoteDb));
+              S.DB.meta = S.DB.meta || {}; S.DB.meta.syncedAt = j.savedAt;
+              await S.persist();
+            } else if (localTs && (!j.savedAt || localTs > j.savedAt)) {
+              await S.persist(); // 本地较新 → 推回（密文）
+            }
           }
         }
-      }
-    } catch (e) {}
+      } catch (e) {}
+      return;
+    }
+    // 线上（GitHub Pages 等静态托管）：同源拉取加密数据文件（只读镜像，无密码不可读）
+    const IS_ONLINE = location.hostname.endsWith('github.io');
+    if (IS_ONLINE) {
+      try {
+        const r = await fetch('data/workplat.enc.json', { cache: 'no-store' });
+        if (!r.ok) return;
+        const sealed = await r.text();
+        if (typeof sealed === 'string' && sealed.indexOf('v1:') === 0 && V && V.key) {
+          const remoteDb = await V.unseal(sealed);
+          if (remoteDb && remoteDb.projects) {
+            // 线上为只读镜像：以线上最新为准（本地编辑已推送到此）
+            S.importJSON(JSON.stringify(remoteDb));
+            S.DB.meta = S.DB.meta || {}; S.DB.meta.syncedAt = new Date().toISOString();
+            await S.persist();
+          }
+        }
+      } catch (e) {}
+      return;
+    }
+    // 其它未知宿主：不同步
   }
   async function apiValidate() {
     const payload = { projects: S.listProjects(), tasks: S.listTasks(), clients: S.listClients() };
@@ -1093,7 +1116,7 @@
   }
   function boot() {
     buildShell();
-    if (REMOTE) remoteHydrate().then(render); else render();
+    remoteHydrate().then(render);
   }
   /* 全屏密码锁：未解锁前不渲染任何数据 */
   function renderLock() {
