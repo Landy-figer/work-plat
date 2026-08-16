@@ -799,16 +799,26 @@
   };
   async function remoteHydrate() {
     if (!REMOTE) return;
+    const V = LB.vault;
+    if (V && V.enabled && !V.isUnlocked()) return; // 锁定状态无密钥，跳过（避免拿到密文也无法解密）
     try {
       const r = await fetch(API_BASE + '/api/load');
       const j = await r.json();
       if (j && j.db) {
-        const localTs = (S.meta() && S.meta().syncedAt) || null;
-        if (!localTs || (j.savedAt && j.savedAt > localTs)) {
-          S.importJSON(JSON.stringify(j.db));
-          S.DB.meta = S.DB.meta || {}; S.DB.meta.syncedAt = j.savedAt; S.persist();
-        } else if (localTs && (!j.savedAt || localTs > j.savedAt)) {
-          LB.onPersist(S.DB);
+        let remoteDb = j.db;
+        // 服务端返回密文（v1: 前缀）→ 本地用密钥解密
+        if (typeof remoteDb === 'string' && remoteDb.indexOf('v1:') === 0 && V && V.key) {
+          remoteDb = await V.unseal(remoteDb);
+        }
+        if (remoteDb && remoteDb.projects) {
+          const localTs = (S.meta() && S.meta().syncedAt) || null;
+          if (!localTs || (j.savedAt && j.savedAt > localTs)) {
+            S.importJSON(JSON.stringify(remoteDb));
+            S.DB.meta = S.DB.meta || {}; S.DB.meta.syncedAt = j.savedAt;
+            await S.persist();
+          } else if (localTs && (!j.savedAt || localTs > j.savedAt)) {
+            await S.persist(); // 本地较新 → 推回（密文）
+          }
         }
       }
     } catch (e) {}
@@ -827,10 +837,12 @@
   }
   async function apiSync() {
     try {
-      const r = await fetch(API_BASE + '/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ db: S.DB, at: new Date().toISOString() }) });
+      const payload = (LB.vault && LB.vault.isUnlocked()) ? await S.sealedRaw() : S.DB;
+      const r = await fetch(API_BASE + '/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ db: payload, at: new Date().toISOString() }) });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const res = await r.json();
-      state.validateHtml = `<div class="validate-ok">✓ 已同步到后端数据库：项目 ${res.counts.projects} · 任务 ${res.counts.tasks} · 对接人 ${res.counts.clients}（保存于 ${esc(res.savedAt)}）</div>`;
+      if (res.sealed) state.validateHtml = `<div class="validate-ok">✓ 已加密同步到后端数据库（保存于 ${esc(res.savedAt)}）</div>`;
+      else state.validateHtml = `<div class="validate-ok">✓ 已同步到后端数据库：项目 ${res.counts.projects} · 任务 ${res.counts.tasks} · 对接人 ${res.counts.clients}（保存于 ${esc(res.savedAt)}）</div>`;
     } catch (e) {
       state.validateHtml = `<div class="validate-issues"><li><span class="vi-level vi-error">错误</span><span>同步失败（${esc(e.message)}）。请确认后端已在 8200 端口运行。</span></li></div>`;
     }
@@ -865,6 +877,7 @@
       case 'task-status': openTaskStatus(id); break;
       case 'proj-new': bindProjForm(null); break;
       case 'proj-toggle': state.projOpenId = (state.projOpenId === id) ? null : id; render(); break;
+      case 'vault-lock': if (LB.vault) LB.vault.lock(); location.reload(); break;
       case 'proj-edit': bindProjForm(id); break;
       case 'proj-del': confirmModal('确认删除该项目及其关联任务？此操作不可撤销。', () => { S.deleteProject(id); if (state.projOpenId === id) state.projOpenId = null; render(); }, { okText: '删除项目' }); break;
       case 'proj-addtask': openModal('新建关联任务', taskForm({ projectId: id }), (v) => { S.saveTask({ title: v.title, priority: v.priority, projectId: id, dueDate: v.dueDate ? new Date(v.dueDate).toISOString() : null, status: v.status }, true); closeModal(); render(); }); break;
@@ -1067,15 +1080,58 @@
   LB.onSync = () => { if (state.view) render(); };
 
   /* ===================== 启动 ===================== */
-  function init() {
+  function buildShell() {
+    const V = LB.vault;
+    const lockBtn = (V && V.enabled) ? '<button class="btn ghost vault-lockbtn" data-act="vault-lock" title="锁定并退出">🔒 锁定</button>' : '';
     $('#app').innerHTML = `
       <aside class="sidebar"><div class="brand">WORK-Plat</div><nav id="nav"></nav></aside>
-      <main class="main"><header class="topbar"><h2 id="view-title"></h2></header>
+      <main class="main"><header class="topbar"><h2 id="view-title"></h2>${lockBtn}</header>
       <div class="view-scroll"><div id="view" class="view"></div></div></main>
       <div id="modal" class="modal"><div class="modal-mask" data-act="modal-mask"></div><div class="modal-card"><div class="modal-head"><h3 id="modal-title"></h3><button class="x" id="modal-x">×</button></div><div class="modal-body" id="modal-body"></div><div class="modal-foot"><button class="btn" id="modal-cancel">取消</button><button class="btn primary" id="modal-save">保存</button></div></div></div>`;
     $('#modal-x').onclick = closeModal;
     $('.modal-mask').onclick = closeModal;
+  }
+  function boot() {
+    buildShell();
     if (REMOTE) remoteHydrate().then(render); else render();
+  }
+  /* 全屏密码锁：未解锁前不渲染任何数据 */
+  function renderLock() {
+    $('#app').innerHTML = `
+      <div class="vault-lock">
+        <div class="vault-card">
+          <div class="vault-logo">🔒 WORK-Plat</div>
+          <p class="vault-sub">此工作台已加密保护</p>
+          <p class="vault-sub2">请输入访问密码后使用</p>
+          <input id="vault-pw" type="password" class="vault-input" placeholder="访问密码" autocomplete="off" />
+          <div id="vault-err" class="vault-err"></div>
+          <button id="vault-go" class="btn primary vault-btn">解锁</button>
+          <p class="vault-hint">数据在本地以密码加密存储；忘记密码将无法恢复。</p>
+        </div>
+      </div>`;
+    const go = async () => {
+      const pw = $('#vault-pw').value;
+      if (!pw) { $('#vault-err').textContent = '请输入访问密码'; return; }
+      const btn = $('#vault-go'); btn.disabled = true; btn.textContent = '校验中…';
+      try {
+        await LB.vault.unlock(pw);
+        await S.unsealLoad();
+        await S.persist();
+        boot();
+      } catch (e) {
+        $('#vault-err').textContent = (e && e.message) || '密码错误';
+        btn.disabled = false; btn.textContent = '解锁';
+      }
+    };
+    $('#vault-go').onclick = go;
+    const inp = $('#vault-pw');
+    inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+    setTimeout(() => { try { inp.focus(); } catch (e) {} }, 0);
+  }
+  function init() {
+    const V = LB.vault;
+    if (V && V.enabled && V.locked) { renderLock(); return; }
+    boot();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 })(window);

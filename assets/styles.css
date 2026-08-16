@@ -510,3 +510,36 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: var(--fw-bold); col
   .cr-tf-del { grid-column: 1 / -1; }
   .cr-holder-head { grid-template-columns: minmax(0, 1fr) 40px; }
 }
+
+/* ===================== 密码锁屏（vault） ===================== */
+.vault-lock {
+  position: fixed; inset: 0; z-index: 9999;
+  display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(120% 120% at 50% 0%, oklch(96% 0.02 85) 0%, oklch(92% 0.025 78) 100%);
+  padding: 20px;
+}
+.vault-card {
+  width: min(380px, 92vw);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 18px 50px -20px oklch(40% 0.03 60 / 0.35);
+  padding: 34px 30px 26px;
+  text-align: center;
+}
+.vault-logo { font-size: 26px; font-weight: 700; color: var(--ink); letter-spacing: 0.5px; margin-bottom: 14px; }
+.vault-sub { margin: 0; font-size: 15px; color: var(--ink); font-weight: 600; }
+.vault-sub2 { margin: 4px 0 20px; font-size: 13px; color: var(--ink-2); }
+.vault-input {
+  width: 100%; box-sizing: border-box;
+  padding: 12px 14px; font-size: 16px;
+  border: 1px solid var(--line-2); border-radius: 10px;
+  background: var(--surface-2); color: var(--ink);
+  outline: none; transition: border-color .15s, box-shadow .15s;
+}
+.vault-input:focus { border-color: oklch(62% 0.052 240); box-shadow: 0 0 0 3px oklch(62% 0.052 240 / 0.18); }
+.vault-err { min-height: 18px; margin: 10px 0 0; font-size: 13px; color: oklch(55% 0.16 25); }
+.vault-btn { width: 100%; margin-top: 6px; padding: 12px; font-size: 15px; }
+.vault-btn:disabled { opacity: 0.6; cursor: default; }
+.vault-hint { margin: 16px 0 0; font-size: 12px; color: var(--ink-2); line-height: 1.5; }
+.vault-lockbtn { margin-left: auto; }

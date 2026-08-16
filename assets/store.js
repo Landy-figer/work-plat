@@ -106,42 +106,74 @@
     };
   }
 
+  /* 保险库锁定时使用的空壳，避免用种子数据覆盖未解密的原文 */
+  function emptyDb() {
+    return { projects: [], tasks: [], clients: [], judges: [], lawItems: [], audit: [], meta: { lastSync: null, currentUser: '我' } };
+  }
+
   /* ---------- 持久化 ---------- */
   let DB;
   let channel = null;
   try { channel = ('BroadcastChannel' in global) ? new BroadcastChannel(SYNC_CHANNEL) : null; } catch (e) { channel = null; }
 
   function load() {
+    const vaultOn = !!(LB.vault && LB.vault.enabled);
     try {
       const raw = global.localStorage.getItem(DB_KEY);
       if (raw) {
+        if (vaultOn) {
+          // 保险库启用且锁定：延迟解密，先缓存原文，返回空壳避免覆盖
+          if (LB.vault) LB.vault.pendingRaw = raw;
+          return emptyDb();
+        }
         const parsed = JSON.parse(raw);
-        if (parsed && parsed.projects) { parsed.clients = parsed.clients || []; parsed.judges = parsed.judges || []; const cur = (parsed.meta && parsed.meta.currentUser) || '我'; parsed.projects.forEach((p) => { if (!Array.isArray(p.cases)) p.cases = []; migrateNotes(p, cur); migrateFee(p); migrateSeizures(p); (p.cases || []).forEach((c) => { migrateNotes(c, cur); migrateFee(c); migrateSeizures(c); }); }); return parsed; }
+        if (parsed && parsed.projects) {
+          parsed.clients = parsed.clients || []; parsed.judges = parsed.judges || [];
+          const cur = (parsed.meta && parsed.meta.currentUser) || '我';
+          parsed.projects.forEach((p) => { if (!Array.isArray(p.cases)) p.cases = []; migrateNotes(p, cur); migrateFee(p); migrateSeizures(p); migrateCreditors(p); migrateAgent(p); (p.cases || []).forEach((c) => { migrateNotes(c, cur); migrateFee(c); migrateSeizures(c); migrateCreditors(c); migrateAgent(c); }); });
+          return parsed;
+        }
       }
     } catch (e) { /* ignore */ }
+    if (vaultOn) return emptyDb();
     const s = seed();
     persist(s, true);
     return s;
   }
 
-  function persist(db, silent) {
+  async function persist(db, silent) {
     DB = db || DB;
-    try { global.localStorage.setItem(DB_KEY, JSON.stringify(DB)); } catch (e) { console.error('save failed', e); }
+    let raw;
+    // 保险库启用且已解锁：用密码派生密钥加密后写入（密文即使被读取也无法还原）
+    if (LB.vault && LB.vault.enabled && LB.vault.isUnlocked() && LB.vault.key) {
+      try { raw = await LB.vault.seal(DB); } catch (e) { raw = JSON.stringify(DB); }
+    } else {
+      raw = JSON.stringify(DB);
+    }
+    try { global.localStorage.setItem(DB_KEY, raw); } catch (e) { console.error('save failed', e); }
     if (!silent && channel) {
       try { channel.postMessage({ type: 'db', ts: Date.now() }); } catch (e) {}
     }
     // 本地同步服务钩子（仅浏览器 + localhost:8200，避免 Node 测试环境触发网络请求）
+    // 保险库启用时发送密文字符串，服务端原样存储；否则发送明文 DB 对象
     if (typeof location !== 'undefined' && location.port === '8200' && typeof fetch === 'function' && typeof LB.onPersist === 'function') {
-      try { LB.onPersist(DB); } catch (e) {}
+      try { LB.onPersist(raw); } catch (e) {}
     }
   }
 
   if (channel) {
-    channel.onmessage = (ev) => {
+    channel.onmessage = async (ev) => {
       if (ev.data && ev.data.type === 'db') {
         try {
           const raw = global.localStorage.getItem(DB_KEY);
-          if (raw) { DB = JSON.parse(raw); DB.meta.lastSync = new Date().toISOString(); if (LB.onSync) LB.onSync(); }
+          if (raw) {
+            if ((LB.vault && LB.vault.enabled) && ('' + raw).indexOf('v1:') === 0) {
+              // 密文：仅当本标签页已解锁时才解密同步
+              if (LB.vault.isUnlocked() && LB.vault.key) { DB = await LB.vault.unseal(raw); DB.meta.lastSync = new Date().toISOString(); if (LB.onSync) LB.onSync(); }
+            } else {
+              DB = JSON.parse(raw); DB.meta.lastSync = new Date().toISOString(); if (LB.onSync) LB.onSync();
+            }
+          }
         } catch (e) {}
       }
     };
@@ -279,6 +311,7 @@
     get DB() { return DB; },
     meta() { return DB.meta; },
     setCurrentUser(u) { DB.meta.currentUser = u; persist(); },
+    persist, // 暴露持久化（保险库解锁时落盘为密文）
 
     /* == 项目 == */
     listProjects() { return DB.projects.slice(); },
@@ -572,7 +605,27 @@
       audit('导入数据', '从备份恢复');
       return true;
     },
-    resetDemo() { DB = seed(); persist(); audit('重置', '恢复示范数据'); }
+    resetDemo() { DB = seed(); persist(); audit('重置', '恢复示范数据'); },
+    /* 解锁后：把缓存的原文（密文 v1: / 旧明文 / 空）还原为 DB 并跑迁移；空则种入示范数据 */
+    unsealLoad: async function () {
+      const V = LB.vault;
+      if (!V || !V.key) return DB;
+      const raw = (V.pendingRaw != null) ? V.pendingRaw : global.localStorage.getItem(DB_KEY);
+      let db;
+      if (raw && ('' + raw).indexOf('v1:') === 0) db = await V.unseal(raw);
+      else if (raw && ('' + raw).charAt(0) === '{') db = JSON.parse(raw); // 旧明文（加密前）迁移
+      else db = seed();
+      db.clients = db.clients || []; db.judges = db.judges || [];
+      const cur = (db.meta && db.meta.currentUser) || '我';
+      (db.projects || []).forEach((p) => { if (!Array.isArray(p.cases)) p.cases = []; migrateNotes(p, cur); migrateFee(p); migrateSeizures(p); migrateCreditors(p); migrateAgent(p); (p.cases || []).forEach((c) => { migrateNotes(c, cur); migrateFee(c); migrateSeizures(c); migrateCreditors(c); migrateAgent(c); }); });
+      DB = db;
+      return DB;
+    },
+    /* 当前 DB 的密文字符串（用于推送后端）；未解锁返回 null */
+    sealedRaw: async function () {
+      if (LB.vault && LB.vault.enabled && LB.vault.isUnlocked() && LB.vault.key) return await LB.vault.seal(DB);
+      return null;
+    }
   };
 
   LB.store = store;

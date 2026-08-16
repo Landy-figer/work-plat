@@ -117,11 +117,18 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'GET' && url.pathname === '/api/load') {
       let dbObj = localLoad();
-      let savedAt = dbObj && dbObj.meta && dbObj.meta.syncedAt;
+      let savedAt = null;
+      if (dbObj && typeof dbObj === 'string') {
+        // 客户端加密密文（v1: 前缀）：无 meta，用文件修改时间作为 savedAt 代理
+        try { savedAt = fs.statSync(DATA_FILE).mtime.toISOString(); } catch (e) {}
+      } else if (dbObj && dbObj.meta) {
+        savedAt = dbObj.meta.syncedAt || null;
+      }
       if (CLOUD_ON) {
         try {
           const cloudDb = cloud.pullCloud(CFG);
-          if (cloudDb && cloud.newer(cloudDb, dbObj)) { dbObj = cloudDb; savedAt = cloud.tsOf(cloudDb); }
+          // 密文无法比较时间戳：仅当本地文件缺失时才用云端恢复
+          if (cloudDb && !dbObj) { dbObj = cloudDb; savedAt = cloud.tsOf(cloudDb); }
         } catch (e) { console.error('[cloud pull]', e.message); }
       }
       return send(res, 200, { ok: true, db: dbObj, savedAt: savedAt || null });
@@ -129,8 +136,16 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && (url.pathname === '/api/save' || url.pathname === '/api/sync')) {
       const body = await readBody(req);
       const dbObj = body.db || body;
-      if (!dbObj || typeof dbObj !== 'object') return send(res, 400, { ok: false, error: 'invalid body' });
       const now = new Date().toISOString();
+      // 客户端加密后的密文（v1: 前缀字符串）：原样存储，不解析对象、不上 meta
+      if (typeof dbObj === 'string') {
+        if (dbObj.indexOf('v1:') !== 0) return send(res, 400, { ok: false, error: 'invalid payload' });
+        localSave(dbObj);
+        db.prepare('INSERT INTO snapshots (kind, payload, saved_at) VALUES (?, ?, ?)').run('sealed', dbObj, now);
+        if (CLOUD_ON) { try { cloud.pushCloud(dbObj, CFG); } catch (e) { console.error('[cloud push]', e.message); } }
+        return send(res, 200, { ok: true, savedAt: now, sealed: true });
+      }
+      if (!dbObj || typeof dbObj !== 'object') return send(res, 400, { ok: false, error: 'invalid body' });
       dbObj.meta = dbObj.meta || {};
       dbObj.meta.syncedAt = now;
       localSave(dbObj);
