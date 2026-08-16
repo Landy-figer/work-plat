@@ -30,13 +30,13 @@
         id: 'prj_seed1', name: '百高项目债权处置', category: '破产类',
         contractLawyer: '《委托代理合同》/我',
         party: '百高资产管理有限公司', relatedCases: '百高系列债权处置（含重整、变更执行人）', caseNo: '(2026)粤03破申112号',
-        opponent: '', handlerContact: '我 13800001111', collateral: '不动产抵押+股权质押', seizedItem: '盈基大厦', seizureStart: '2026-04-29', seizureEnd: '2028-04-28',
+        opponent: '', handlerContact: '我 13800001111', seizures: [{ type: '不动产', name: '盈基大厦（不动产抵押+股权质押）', start: '2026-04-29', end: '2028-04-28', renewalEnd: '2030-10-29' }],
         contractName: '综合法律服务合同', contractNo: 'HT-2026-0102', cause: '债权处置/破产重整', signDate: '2026-01-08',
-        feeUpfront: '前期固定 80万', feeLater: '后期按回款 8%', feePayment: '已付首期 40万', feeExtraction: '待回款后提取', transferTime: '2026-06-30', transferAmount: '转付杜总 12万',
-        hearingDate: d(5, 9, 30), contractExpiryDate: d(60), renewalDate: d(45),
+        fee: '前期固定 80万 / 后期按回款 8%', feePayment: '已付首期 40万', feeExtraction: '待回款后提取', transferTime: '2026-06-30', transferAmount: '转付杜总 12万',
+        hearingDate: d(5, 9, 30), contractExpiryDate: d(60), renewalDate: '2028-03-29',
         tags: ['破产', '债权处置'], status: '进行中',
         manager: '我', managerContact: '13800001111', contact: '杜总', contactContact: '13900008888',
-        todo: '提前45日寄出续封文件并联系经办核对', otherNotes: '涉及多个债权人协调', handover: '卷宗移交本人，同步电子目录',
+        todo: '提前45日寄出续封文件并联系经办核对', handover: '卷宗移交本人，同步电子目录',
         creditor: '百高资产管理有限公司', debtor: '债务人某实业公司', admin: '盈基清算组', claimAmount: '—', bankruptcyStage: '重整',
         progress: [
           { date: '2026-01-12', content: '完成债权尽调，制定处置方案。', author: '我' },
@@ -49,13 +49,13 @@
         id: 'prj_seed2', name: '明月地产建设工程合同审查', category: '其他类',
         contractLawyer: '《法律顾问合同》/我',
         party: '明月地产集团', relatedCases: '建设工程施工合同履约争议', caseNo: '—',
-        opponent: '—', handlerContact: '我 13800003333', collateral: '—', seizedItem: '—', seizureStart: null, seizureEnd: null,
+        opponent: '—', handlerContact: '我 13800003333', seizures: [],
         contractName: '建设工程施工合同', contractNo: 'HT-2026-0205', cause: '合同审查', signDate: '2026-05-20',
-        feeUpfront: '年顾问费 30万', feeLater: '—', feePayment: '已付', feeExtraction: '—', transferTime: null, transferAmount: null,
+        fee: '年顾问费 30万', feePayment: '已付', feeExtraction: '—', transferTime: null, transferAmount: null,
         hearingDate: null, contractExpiryDate: d(20), renewalDate: null,
         tags: ['非诉', '建设工程'], status: '进行中',
         manager: '我', managerContact: '13800003333', contact: '陈经理', contactContact: '13900004444',
-        todo: '二次审阅后出具正式审查意见', otherNotes: '重点关注工期与付款条款', handover: '—',
+        todo: '二次审阅后出具正式审查意见', handover: '—',
         progress: [
           { date: '2026-05-22', content: '完成主合同风险审查，反馈12处修改建议。', author: '我' }
         ],
@@ -65,13 +65,13 @@
         id: 'prj_seed3', name: '星河生物劳动仲裁代理', category: '诉讼类',
         contractLawyer: '《委托代理协议》/我',
         party: '星河生物股份有限公司', relatedCases: '前员工劳动争议仲裁', caseNo: '(2026)京0108劳仲0123号',
-        opponent: '前员工李某', handlerContact: '我 13800001111', collateral: '—', seizedItem: '—', seizureStart: null, seizureEnd: null,
+        opponent: '前员工李某', handlerContact: '我 13800001111', seizures: [],
         contractName: '委托代理协议', contractNo: 'HT-2026-0170', cause: '劳动争议', signDate: '2026-02-10',
-        feeUpfront: '基础代理费 5万', feeLater: '—', feePayment: '已付', feeExtraction: '—', transferTime: null, transferAmount: null,
+        fee: '基础代理费 5万', feePayment: '已付', feeExtraction: '—', transferTime: null, transferAmount: null,
         hearingDate: d(2, 14, 0), contractExpiryDate: null, renewalDate: d(10),
         tags: ['仲裁', '劳动法'], status: '进行中',
         manager: '我', managerContact: '13800001111', contact: '赵主管', contactContact: '13900005555',
-        todo: '开庭前完成证据原件核对', otherNotes: '注意仲裁时效', handover: '—',
+        todo: '开庭前完成证据原件核对', handover: '—',
         court: '北京市海淀区劳动人事争议仲裁委员会', claim: '确认劳动关系并支付经济补偿', stage: '仲裁', limitation: null, evidence: '',
         progress: [{ date: '2026-02-15', content: '收集劳动关系证据，撰写仲裁申请书。', author: '我' }],
         createdAt: d(-150), updatedAt: d(-1)
@@ -116,7 +116,7 @@
       const raw = global.localStorage.getItem(DB_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (parsed && parsed.projects) { parsed.clients = parsed.clients || []; parsed.judges = parsed.judges || []; const cur = (parsed.meta && parsed.meta.currentUser) || '我'; parsed.projects.forEach((p) => { if (!Array.isArray(p.cases)) p.cases = []; migrateNotes(p, cur); (p.cases || []).forEach((c) => migrateNotes(c, cur)); }); return parsed; }
+        if (parsed && parsed.projects) { parsed.clients = parsed.clients || []; parsed.judges = parsed.judges || []; const cur = (parsed.meta && parsed.meta.currentUser) || '我'; parsed.projects.forEach((p) => { if (!Array.isArray(p.cases)) p.cases = []; migrateNotes(p, cur); migrateFee(p); migrateSeizures(p); (p.cases || []).forEach((c) => { migrateNotes(c, cur); migrateFee(c); migrateSeizures(c); }); }); return parsed; }
       }
     } catch (e) { /* ignore */ }
     const s = seed();
@@ -147,7 +147,7 @@
     };
   }
 
-  DB = load();
+  /* DB 在文件末尾（所有 const 与迁移辅助函数声明完成后）统一初始化，避免 SEIZURE_PERIODS 等常量在 TDZ 中被提前引用 */
 
   /* ---------- 审计日志 ---------- */
   function audit(action, detail, user) {
@@ -172,6 +172,63 @@
     }
     delete o.docs;
   }
+
+  /* 旧版「律师费(前期/固定)」+「律师费(后期)」合并为单一「律师费」 */
+  function migrateFee(o) {
+    if (!o) return;
+    if (o.fee == null || o.fee === '') {
+      const parts = [o.feeUpfront, o.feeLater].map((x) => (x == null ? '' : ('' + x).trim())).filter(Boolean);
+      o.fee = parts.length ? parts.join(' / ') : ''; // 归一化为字符串，避免 undefined
+    }
+    delete o.feeUpfront; delete o.feeLater;
+  }
+  /* 旧版 抵质押物/查封物/查封起算日/查封截止日（标量）→ 多项 seizures 数组（按类型自动计算期限） */
+  function migrateSeizures(o) {
+    if (!o) return;
+    if (!Array.isArray(o.seizures)) {
+      const name = [o.seizedItem, o.collateral].map((x) => (x == null ? '' : ('' + x).trim())).filter(Boolean).join('、');
+      const start = o.seizureStart || '';
+      const end = o.seizureEnd || '';
+      if (name || start || end) {
+        const item = { type: '不动产', name: name, start: start, end: end, renewalEnd: '' };
+        if (start) { const c = computeSeizureEnd(item.type, start); item.end = c.end; item.renewalEnd = c.renewalEnd; }
+        o.seizures = [item];
+      } else {
+        o.seizures = [];
+      }
+    }
+    delete o.seizedItem; delete o.collateral; delete o.seizureStart; delete o.seizureEnd;
+  }
+
+  /* 查封 / 冻结期限：按财产类型确定上限；续封期限 ≤ 原期限 1/2（法源：查封规定 2020修正 第1条） */
+  const SEIZURE_PERIODS = { '资金/银行存款': 12, '动产': 24, '不动产': 36, '其他财产权': 36 }; // 单位：月
+  function addMonthsISO(s, n) {
+    if (!s) return '';
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s); if (!m) return '';
+    const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+    d.setUTCMonth(d.getUTCMonth() + n);
+    return d.toISOString().slice(0, 10);
+  }
+  function computeSeizureEnd(type, start) {
+    const p = SEIZURE_PERIODS[type] || 36;
+    return { end: addMonthsISO(start, p), renewalEnd: addMonthsISO(start, Math.round(p * 1.5)) };
+  }
+  function seizureSummary(arr) {
+    if (!Array.isArray(arr) || !arr.length) return '—';
+    return arr.map((s) => {
+      const e = computeSeizureEnd(s.type || '不动产', s.start);
+      const end = s.end || e.end, rEnd = s.renewalEnd || e.renewalEnd;
+      return [s.type, s.name].filter(Boolean).join(':') + '（' + (s.start || '?') + '→' + (end || '?') + (rEnd ? ' / 续封最迟' + rEnd : '') + '）';
+    }).join(' | ');
+  }
+  function seizureEarliest(arr) {
+    if (!Array.isArray(arr)) return '';
+    const ends = arr.map((s) => s.end || computeSeizureEnd(s.type || '不动产', s.start).end).filter(Boolean).sort();
+    return ends.length ? ends[0] : '';
+  }
+
+  /* 至此所有 const（SEIZURE_PERIODS 等）与迁移/计算辅助函数均已声明完成，可安全调用 load() 触发迁移 */
+  DB = load();
 
   /* 拖拽重排：把 ids 指定的子集按新顺序排好，未参与项保持原有相对顺序；整块插入到首个参与项的原位置 */
   function applyOrder(arr, ids) {
@@ -367,7 +424,7 @@
     saveManualEvent(e, isNew) { if (isNew) e.id = uid('evt'); this.events.push(e); audit('新增日程', e.title); persist(); return e; },
     deleteManualEvent(id) { this.events = this.events.filter((x) => x.id !== id); audit('删除日程', id); persist(); },
 
-    /* == 派生日程：把任务截止、开庭、合同到期、续费映射为事件 == */
+    /* == 派生日程：把任务截止、开庭、合同到期、查封到期映射为事件 == */
     deriveEvents() {
       const evts = [];
       DB.tasks.forEach((t) => {
@@ -377,12 +434,12 @@
       DB.projects.forEach((p) => {
         if (p.hearingDate) evts.push({ id: 'evt_hearing_' + p.id, kind: 'hearing', refId: p.id, title: '⚖️ 开庭：' + p.name, start: p.hearingDate, end: p.hearingDate, projectId: p.id, allDay: false });
         if (p.contractExpiryDate) evts.push({ id: 'evt_cexp_' + p.id, kind: 'contract', refId: p.id, title: '📄 合同到期：' + p.name, start: p.contractExpiryDate, end: p.contractExpiryDate, projectId: p.id, allDay: true });
-        if (p.renewalDate) evts.push({ id: 'evt_ren_' + p.id, kind: 'renewal', refId: p.id, title: '🔁 续费提醒：' + p.name, start: p.renewalDate, end: p.renewalDate, projectId: p.id, allDay: true });
+        if (p.renewalDate) evts.push({ id: 'evt_ren_' + p.id, kind: 'renewal', refId: p.id, title: '🔔 查封到期提醒：' + p.name, start: p.renewalDate, end: p.renewalDate, projectId: p.id, allDay: true });
         (p.cases || []).forEach((c) => {
           const cid = p.id + '_' + c.id;
           if (c.hearingDate) evts.push({ id: 'evt_hearing_' + cid, kind: 'hearing', refId: p.id, title: '⚖️ 开庭：' + (c.name || '关联案件'), start: c.hearingDate, end: c.hearingDate, projectId: p.id, allDay: false });
           if (c.contractExpiryDate) evts.push({ id: 'evt_cexp_' + cid, kind: 'contract', refId: p.id, title: '📄 合同到期：' + (c.name || '关联案件'), start: c.contractExpiryDate, end: c.contractExpiryDate, projectId: p.id, allDay: true });
-          if (c.renewalDate) evts.push({ id: 'evt_ren_' + cid, kind: 'renewal', refId: p.id, title: '🔁 续费提醒：' + (c.name || '关联案件'), start: c.renewalDate, end: c.renewalDate, projectId: p.id, allDay: true });
+          if (c.renewalDate) evts.push({ id: 'evt_ren_' + cid, kind: 'renewal', refId: p.id, title: '🔔 查封到期提醒：' + (c.name || '关联案件'), start: c.renewalDate, end: c.renewalDate, projectId: p.id, allDay: true });
         });
       });
       this.events.forEach((e) => evts.push(Object.assign({ kind: 'manual' }, e)));
@@ -397,12 +454,12 @@
       DB.projects.forEach((p) => {
         if (within(p.hearingDate, 14)) out.push({ level: '高', type: '开庭日期', project: p.name, date: p.hearingDate, projectId: p.id });
         if (within(p.contractExpiryDate, 14)) out.push({ level: '高', type: '合同到期', project: p.name, date: p.contractExpiryDate, projectId: p.id });
-        if (within(p.renewalDate, 14)) out.push({ level: '中', type: '续费提醒', project: p.name, date: p.renewalDate, projectId: p.id });
+        if (within(p.renewalDate, 14)) out.push({ level: '中', type: '查封到期提醒', project: p.name, date: p.renewalDate, projectId: p.id });
         (p.cases || []).forEach((c) => {
           const nm = p.name + ' / ' + (c.name || '关联案件');
           if (within(c.hearingDate, 14)) out.push({ level: '高', type: '开庭日期', project: nm, date: c.hearingDate, projectId: p.id });
           if (within(c.contractExpiryDate, 14)) out.push({ level: '高', type: '合同到期', project: nm, date: c.contractExpiryDate, projectId: p.id });
-          if (within(c.renewalDate, 14)) out.push({ level: '中', type: '续费提醒', project: nm, date: c.renewalDate, projectId: p.id });
+          if (within(c.renewalDate, 14)) out.push({ level: '中', type: '查封到期提醒', project: nm, date: c.renewalDate, projectId: p.id });
         });
       });
       DB.tasks.forEach((t) => {
@@ -433,9 +490,9 @@
     exportCSV(table) {
       const esc = (v) => { const s = v == null ? '' : ('' + v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
       let rows, headers;
-      if (table === 'projects') { headers = ['项目名称', '项目类别', '状态', '委托方(当事人)', '对方当事人', '涉及案件', '案号', '代理合同及律师', '合同名称', '合同编号', '案由', '签约时间', '律师费(前期/固定)', '律师费(后期)', '付款情况', '提取情况', '转付时间', '转付金额', '抵质押物', '查封物', '查封起算日', '查封截止日', '开庭日期', '合同到期日', '续费提醒日', '标签']; rows = DB.projects.map((p) => [p.name, p.category || '其他类', p.status, p.party, p.opponent, p.relatedCases, p.caseNo, p.contractLawyer, p.contractName, p.contractNo, p.cause, p.signDate, p.feeUpfront, p.feeLater, p.feePayment, p.feeExtraction, p.transferTime, p.transferAmount, p.collateral, p.seizedItem, p.seizureStart, p.seizureEnd, (p.hearingDate || '').slice(0, 10), (p.contractExpiryDate || '').slice(0, 10), (p.renewalDate || '').slice(0, 10), (p.tags || []).join('|')]); }
+      if (table === 'projects') { headers = ['项目名称', '项目类别', '状态', '委托方(当事人)', '对方当事人', '涉及案件', '案号', '代理合同及律师', '合同名称', '合同编号', '案由', '签约时间', '律师费', '付款情况', '提取情况', '转付时间', '转付金额', '查封与保全(多项:类型/名称/起算→截止/续封最迟)', '查封最早截止日', '开庭日期', '合同到期日', '查封到期提醒日', '标签']; rows = DB.projects.map((p) => [p.name, p.category || '其他类', p.status, p.party, p.opponent, p.relatedCases, p.caseNo, p.contractLawyer, p.contractName, p.contractNo, p.cause, p.signDate, p.fee || '', p.feePayment, p.feeExtraction, p.transferTime, p.transferAmount, seizureSummary(p.seizures), seizureEarliest(p.seizures), (p.hearingDate || '').slice(0, 10), (p.contractExpiryDate || '').slice(0, 10), (p.renewalDate || '').slice(0, 10), (p.tags || []).join('|')]); }
       else if (table === 'tasks') { headers = ['标题', '截止日期', '关联项目', '状态']; rows = DB.tasks.map((t) => [t.title, (t.dueDate || '').slice(0, 10), (store.getProject(t.projectId) || {}).name || '', t.status]); }
-      else if (table === 'cases') { headers = ['所属项目', '案件名称', '案件类别', '状态', '当事人', '对方当事人', '关联案件备注', '案号', '代理合同及律师', '合同名称', '合同编号', '案由', '签约时间', '律师费(前期/固定)', '律师费(后期)', '付款情况', '提取情况', '转付时间', '转付金额', '抵质押物', '查封物', '查封起算日', '查封截止日', '开庭日期', '合同到期日', '续费提醒日', '标签']; rows = DB.projects.flatMap((p) => (p.cases || []).map((c) => [p.name, c.name, c.category || '其他类', c.status, c.party, c.opponent, c.relatedCases, c.caseNo, c.contractLawyer, c.contractName, c.contractNo, c.cause, c.signDate, c.feeUpfront, c.feeLater, c.feePayment, c.feeExtraction, c.transferTime, c.transferAmount, c.collateral, c.seizedItem, c.seizureStart, c.seizureEnd, (c.hearingDate || '').slice(0, 10), (c.contractExpiryDate || '').slice(0, 10), (c.renewalDate || '').slice(0, 10), (c.tags || []).join('|')])); }
+      else if (table === 'cases') { headers = ['所属项目', '案件名称', '案件类别', '状态', '当事人', '对方当事人', '关联案件备注', '案号', '代理合同及律师', '合同名称', '合同编号', '案由', '签约时间', '律师费', '付款情况', '提取情况', '转付时间', '转付金额', '查封与保全(多项:类型/名称/起算→截止/续封最迟)', '查封最早截止日', '开庭日期', '合同到期日', '查封到期提醒日', '标签']; rows = DB.projects.flatMap((p) => (p.cases || []).map((c) => [p.name, c.name, c.category || '其他类', c.status, c.party, c.opponent, c.relatedCases, c.caseNo, c.contractLawyer, c.contractName, c.contractNo, c.cause, c.signDate, c.fee || '', c.feePayment, c.feeExtraction, c.transferTime, c.transferAmount, seizureSummary(c.seizures), seizureEarliest(c.seizures), (c.hearingDate || '').slice(0, 10), (c.contractExpiryDate || '').slice(0, 10), (c.renewalDate || '').slice(0, 10), (c.tags || []).join('|')])); }
       else if (table === 'clients') { headers = ['对接人', '所属项目', '所属公司', '联系方式', '地址', '沟通记录数']; rows = DB.clients.map((c) => [c.name, c.project, c.company, c.contact, c.address, (c.records || []).length]); }
       else if (table === 'judges') { headers = ['经办人', '所属案件', '法院', '联系方式', '地址', '沟通记录数']; rows = DB.judges.map((j) => [j.name, j.case, j.court, j.contact, j.address, (j.records || []).length]); }
       else { return ''; }
@@ -446,7 +503,7 @@
       if (!parsed.projects) throw new Error('无效的数据文件');
       parsed.clients = parsed.clients || []; parsed.judges = parsed.judges || [];
       const cur = (parsed.meta && parsed.meta.currentUser) || '我';
-      parsed.projects.forEach((p) => { if (!Array.isArray(p.cases)) p.cases = []; migrateNotes(p, cur); (p.cases || []).forEach((c) => migrateNotes(c, cur)); });
+      parsed.projects.forEach((p) => { if (!Array.isArray(p.cases)) p.cases = []; migrateNotes(p, cur); migrateFee(p); migrateSeizures(p); (p.cases || []).forEach((c) => { migrateNotes(c, cur); migrateFee(c); migrateSeizures(c); }); });
       DB = parsed; persist();
       audit('导入数据', '从备份恢复');
       return true;
@@ -455,5 +512,5 @@
   };
 
   LB.store = store;
-  LB.util = Object.assign(LB.util || {}, { uid, now, iso, todayStr });
+  LB.util = Object.assign(LB.util || {}, { uid, now, iso, todayStr, computeSeizureEnd, addMonthsISO, SEIZURE_PERIODS, SEIZURE_TYPES: Object.keys(SEIZURE_PERIODS) });
 })(window);

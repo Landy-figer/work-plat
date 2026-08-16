@@ -101,9 +101,69 @@
     return field(key, label, 'text', value, Object.assign({ list: listId }, extra || {})) + dl;
   }
 
+  /* ===================== 查封与保全：多项编辑器（按类型自动计算查封/续封期限） =====================
+   * 期限规则（法源：查封规定 2020修正 第1条）：资金/银行存款≤1年、动产≤2年、不动产/其他财产权≤3年；续封≤原期限 1/2。
+   * 计算统一走 store 暴露的 LB.util.computeSeizureEnd / addMonthsISO，避免两端规则漂移。 */
+  function szTypes() { return (LB.util && LB.util.SEIZURE_PERIODS) ? Object.keys(LB.util.SEIZURE_PERIODS) : ['资金/银行存款', '动产', '不动产', '其他财产权']; }
+  function szCompute(type, start) { return (LB.util && LB.util.computeSeizureEnd) ? LB.util.computeSeizureEnd(type, start) : { end: '', renewalEnd: '' }; }
+  function szAddMonths(s, n) { return (LB.util && LB.util.addMonthsISO) ? LB.util.addMonthsISO(s, n) : ''; }
+  function szRowHtml(it) {
+    it = it || {};
+    const type = it.type || '不动产';
+    const opts = szTypes().map((t) => `<option value="${esc(t)}" ${t === type ? 'selected' : ''}>${esc(t)}</option>`).join('');
+    const e = szCompute(type, it.start);
+    const end = it.end || e.end, rEnd = it.renewalEnd || e.renewalEnd;
+    return `<div class="sz-row" data-sz-row>
+      <select class="sz-type" data-sz="type">${opts}</select>
+      <input class="sz-name" data-sz="name" type="text" value="${esc(it.name || '')}" placeholder="名称/编号">
+      <input class="sz-start" data-sz="start" type="date" value="${esc(it.start || '')}">
+      <span class="sz-computed">截止 <b>${esc(end || '—')}</b><br>续封最迟 <b>${esc(rEnd || '—')}</b></span>
+      <button type="button" class="mini danger sz-del" data-sz-del>删</button>
+    </div>`;
+  }
+  function szEditorHtml(seizures) {
+    const list = Array.isArray(seizures) ? seizures : [];
+    return `<div class="fld wide"><span>查封与保全（多项抵质押物 / 查封物，按类型自动计算查封与续封期限）</span>
+      <div class="sz-editor" data-sz-editor>${list.length ? list.map(szRowHtml).join('') : '<div class="sz-empty">暂无查封物，点击「+ 添加查封物」录入。</div>'}
+        <button type="button" class="mini sz-add" data-sz-add>+ 添加查封物</button>
+      </div></div>`;
+  }
+  function szDetailHtml(seizures) {
+    const list = Array.isArray(seizures) ? seizures : [];
+    if (!list.length) return '<div class="kv"><span class="kv-k">查封与保全</span><span class="kv-v">—</span></div>';
+    const rows = list.map((s) => { const e = szCompute(s.type || '不动产', s.start); const end = s.end || e.end, rEnd = s.renewalEnd || e.renewalEnd; return `<div class="sz-detail-row"><b>${esc(s.type || '')}</b> ${esc(s.name || '')}：起算 ${esc(s.start || '—')} → 查封截止 <b>${esc(end || '—')}</b>；续封最迟 <b>${esc(rEnd || '—')}</b></div>`; }).join('');
+    return `<div class="kv kv-wide"><span class="kv-k">查封与保全（${list.length} 项）</span><div class="kv-v sz-detail">${rows}</div></div>`;
+  }
+  function collectSeizureItems() {
+    const ed = $('#modal-body [data-sz-editor]'); if (!ed) return [];
+    const out = [];
+    ed.querySelectorAll('[data-sz-row]').forEach((row) => {
+      const type = row.querySelector('[data-sz="type"]').value;
+      const name = (row.querySelector('[data-sz="name"]').value || '').trim();
+      const start = row.querySelector('[data-sz="start"]').value;
+      if (!type && !name && !start) return;
+      const e = szCompute(type, start);
+      out.push({ type: type, name: name, start: start || '', end: e.end, renewalEnd: e.renewalEnd });
+    });
+    return out;
+  }
+  function bindSeizureEditor() {
+    const ed = $('#modal-body [data-sz-editor]'); if (!ed) return;
+    const recompute = () => ed.querySelectorAll('[data-sz-row]').forEach((row) => {
+      const e = szCompute(row.querySelector('[data-sz="type"]').value, row.querySelector('[data-sz="start"]').value);
+      const c = row.querySelector('.sz-computed'); if (c) c.innerHTML = '截止 <b>' + esc(e.end || '—') + '</b><br>续封最迟 <b>' + esc(e.renewalEnd || '—') + '</b>';
+    });
+    ed.addEventListener('input', (ev) => { if (ev.target.matches('[data-sz="type"],[data-sz="start"]')) recompute(); });
+    ed.addEventListener('change', (ev) => { if (ev.target.matches('[data-sz="type"],[data-sz="start"]')) recompute(); });
+    ed.addEventListener('click', (ev) => {
+      if (ev.target.closest('[data-sz-add]')) { const empty = ed.querySelector('.sz-empty'); if (empty) empty.remove(); ed.insertAdjacentHTML('beforeend', szRowHtml({})); recompute(); }
+      else if (ev.target.closest('[data-sz-del]')) { const r = ev.target.closest('[data-sz-row]'); if (r) r.remove(); if (!ed.querySelector('[data-sz-row]')) ed.insertAdjacentHTML('afterbegin', '<div class="sz-empty">暂无查封物，点击「+ 添加查封物」录入。</div>'); }
+    });
+  }
+
   /* ===================== 工作台（合并：智能汇报 + 任务 + 提醒） ===================== */
   function viewDashboard() {
-    // 任务提醒与任务管理去重：任务截止类提醒已展示在上方任务管理表中，此处仅保留开庭/合同到期/续费等事件型提醒
+    // 任务提醒与任务管理去重：任务截止类提醒已展示在上方任务管理表中，此处仅保留开庭/合同到期/查封到期等事件型提醒
     const rem = S.reminders().filter((r) => r.type !== '任务截止').slice(0, 6);
     return `
     <div class="dash-cols">
@@ -252,8 +312,7 @@
       { key: 'name', label: '项目名称', type: 'text', wide: true, ph: '如：百高项目债权处置' },
       { key: 'status', label: '状态', type: 'select', options: ['进行中', '已暂停', '已完成', '已结案'] },
       { key: 'category', label: '项目类别', type: 'select', options: PROJ_CATEGORIES },
-      { key: 'tags', label: '标签（逗号分隔）', type: 'text', wide: true },
-      { key: 'otherNotes', label: '其他备注', type: 'textarea', wide: true, rows: 2 }
+      { key: 'tags', label: '标签（逗号分隔）', type: 'text', wide: true }
     ] },
     { section: '当事人信息', fields: [
       { key: 'party', label: '当事人（我方委托人）', type: 'text' },
@@ -269,23 +328,19 @@
       { key: 'signDate', label: '签约时间', type: 'date' }
     ] },
     { section: '费用信息', fields: [
-      { key: 'feeUpfront', label: '律师费（前期/固定）', type: 'text' },
-      { key: 'feeLater', label: '律师费（后期）', type: 'text' },
+      { key: 'fee', label: '律师费', type: 'text', wide: true, ph: '前期固定 / 后期按回款比例，可合并填写' },
       { key: 'feePayment', label: '付款情况', type: 'text', wide: true },
       { key: 'feeExtraction', label: '提取情况', type: 'text', wide: true },
       { key: 'transferTime', label: '转付时间', type: 'date' },
       { key: 'transferAmount', label: '转付金额', type: 'text' }
     ] },
     { section: '查封与保全信息', fields: [
-      { key: 'collateral', label: '抵质押物', type: 'text', wide: true },
-      { key: 'seizedItem', label: '查封物', type: 'text' },
-      { key: 'seizureStart', label: '查封起算日', type: 'date' },
-      { key: 'seizureEnd', label: '查封截止日', type: 'date' }
+      { key: 'seizures', label: '查封与保全（多项抵质押物 / 查封物）', type: 'seizures', wide: true }
     ] },
     { section: '时间节点', fields: [
       { key: 'hearingDate', label: '开庭日期', type: 'datetime' },
       { key: 'contractExpiryDate', label: '合同到期日', type: 'date' },
-      { key: 'renewalDate', label: '续费提醒日', type: 'date' }
+      { key: 'renewalDate', label: '查封到期提醒日', type: 'date' }
     ] },
     { section: '关联说明（自由文本）', fields: [
       { key: 'relatedCases', label: '关联案件备注（选填）', type: 'text', wide: true },
@@ -326,6 +381,7 @@
     return PROJ_GENERIC_MODULES.concat(tpl.modules);
   }
   function projectField(f, p) {
+    if (f.type === 'seizures') return szEditorHtml(p ? p.seizures : []);
     let val = p ? p[f.key] : '';
     if (f.type === 'date' && val) val = ('' + val).slice(0, 10);
     if (f.type === 'datetime' && val) val = ('' + val).slice(0, 16);
@@ -393,7 +449,7 @@
   function projDetailHtml(p) {
     const tasks = S.listTasks().filter((t) => t.projectId === p.id);
     const mods = projectModules(p);
-    const secHtml = mods.map((m) => `<div><div class="kv-sec">${m.section}</div>${m.fields.map((f) => kv(f.label, formatFieldValue(p[f.key], f.type))).join('')}</div>`).join('');
+    const secHtml = mods.map((m) => `<div><div class="kv-sec">${m.section}</div>${m.fields.map((f) => f.key === 'seizures' ? szDetailHtml(p.seizures) : kv(f.label, formatFieldValue(p[f.key], f.type))).join('')}</div>`).join('');
     const notesHtml = (p.notes && p.notes.length) ? p.notes.map((d, i) => `<li><span class="prog-d">${esc(d.date || '')}</span><span class="prog-c">${esc(d.content || '')}</span><span class="prog-a">${esc(d.recipient ? ('接收人：' + d.recipient) : '')}${d.archiveLocation ? (' · 位置：' + d.archiveLocation) : ''}${d.archiveCabinet ? (' · 柜：' + d.archiveCabinet) : ''}${d.author ? (' · ' + d.author) : ''} <button class="mini danger" data-act="proj-delnote" data-id="${p.id}" data-doc="${i}">删</button></span></li>`).join('') : '<li class="empty">暂无备注</li>';
     return `<div class="proj-detail">
       <div class="kv-grid">${secHtml}</div>
@@ -433,6 +489,12 @@
         else val = (val == null ? '' : val);
         data[f.key] = val;
       });
+      // 查封与保全：从多项编辑器收集，并按最早查封截止日自动回填「查封到期提醒日」（提前 30 天，便于办理续封）
+      data.seizures = collectSeizureItems();
+      if (data.seizures.length) {
+        const ends = data.seizures.map((s) => s.end).filter(Boolean).sort();
+        if (ends.length) { const lead = szAddMonths(ends[0], -30); if (lead) data.renewalDate = new Date(lead + 'T00:00:00.000Z').toISOString(); }
+      }
       data.name = data.name || (base && base.name) || '未命名项目';
       data.tags = v.tags ? v.tags.split(/[,，]/).map((s) => s.trim()).filter(Boolean) : (base ? base.tags : []);
       data.notes = (base && base.notes) ? base.notes.slice() : [];
@@ -446,7 +508,8 @@
       closeModal(); render();
     });
     const sel = $('#modal-body [data-field="category"]');
-    if (sel) sel.onchange = () => openProjForm(id, collectForm());
+    if (sel) sel.onchange = () => openProjForm(id, Object.assign(collectForm(), { seizures: collectSeizureItems() }));
+    bindSeizureEditor();
   }
   function bindProjForm(id) { openProjForm(id, null); }
 
@@ -475,7 +538,7 @@
   }
   function caseDetailHtml(p, c) {
     const mods = caseModules(c);
-    const secHtml = mods.map((m) => `<div><div class="kv-sec">${m.section}</div>${m.fields.map((f) => kv(f.label, formatFieldValue(c[f.key], f.type))).join('')}</div>`).join('');
+    const secHtml = mods.map((m) => `<div><div class="kv-sec">${m.section}</div>${m.fields.map((f) => f.key === 'seizures' ? szDetailHtml(c.seizures) : kv(f.label, formatFieldValue(c[f.key], f.type))).join('')}</div>`).join('');
     const notesHtml = (c.notes && c.notes.length) ? c.notes.map((d, i) => `<li><span class="prog-d">${esc(d.date || '')}</span><span class="prog-c">${esc(d.content || '')}</span><span class="prog-a">${esc(d.recipient ? ('接收人：' + d.recipient) : '')}${d.archiveLocation ? (' · 位置：' + d.archiveLocation) : ''}${d.archiveCabinet ? (' · 柜：' + d.archiveCabinet) : ''}${d.author ? (' · ' + d.author) : ''} <button class="mini danger" data-act="case-delnote" data-pid="${p.id}" data-cid="${c.id}" data-doc="${i}">删</button></span></li>`).join('') : '<li class="empty">暂无备注</li>';
     const progHtml = (c.progress && c.progress.length) ? c.progress.map((x) => `<li><span class="prog-d">${esc(x.date)}</span><span class="prog-c">${esc(x.content)}</span><span class="prog-a">${esc(x.author)}</span></li>`).join('') : '<li class="empty">暂无进展</li>';
     return `<div class="case-detail">
@@ -512,6 +575,12 @@
         else val = (val == null ? '' : val);
         data[f.key] = val;
       });
+      // 查封与保全：从多项编辑器收集，并按最早查封截止日自动回填「查封到期提醒日」（提前 30 天，便于办理续封）
+      data.seizures = collectSeizureItems();
+      if (data.seizures.length) {
+        const ends = data.seizures.map((s) => s.end).filter(Boolean).sort();
+        if (ends.length) { const lead = szAddMonths(ends[0], -30); if (lead) data.renewalDate = new Date(lead + 'T00:00:00.000Z').toISOString(); }
+      }
       data.name = data.name || (base && base.name) || '未命名案件';
       data.tags = v.tags ? v.tags.split(/[,，]/).map((s) => s.trim()).filter(Boolean) : (base ? base.tags : []);
       data.notes = (base && base.notes) ? base.notes.slice() : [];
@@ -524,7 +593,8 @@
       closeModal(); render();
     });
     const sel = $('#modal-body [data-field="category"]');
-    if (sel) sel.onchange = () => openCaseForm(projectId, caseId, collectForm());
+    if (sel) sel.onchange = () => openCaseForm(projectId, caseId, Object.assign(collectForm(), { seizures: collectSeizureItems() }));
+    bindSeizureEditor();
   }
 
   /* ===================== 智能提醒（独立视图） ===================== */
@@ -532,7 +602,7 @@
     const rem = S.reminders();
     const g = { '高': rem.filter((r) => r.level === '高'), '中': rem.filter((r) => r.level === '中') };
     if (!rem.length) return `<div class="panel"><div class="empty"><p>未来 14 天暂无预警，安心推进在手事项。</p></div></div>`;
-    return `<div class="toolbar"><span class="hint">基于开庭、合同到期、续费与任务截止自动生成，覆盖未来 14 天。</span></div>
+    return `<div class="toolbar"><span class="hint">基于开庭、合同到期、查封到期与任务截止自动生成，覆盖未来 14 天。</span></div>
     <div class="rem-grid">
       <section class="panel"><h3 class="tt">🔴 高优先预警（${g['高'].length}）</h3>${g['高'].length ? '<ul class="rem-list">' + g['高'].map((r) => `<li class="rem rem-hi"><span class="rem-type">${r.type}</span><span class="rem-proj" data-act="goto-proj" data-id="${r.projectId || ''}">${esc(r.project)}</span><span class="rem-date">${fmtDate(r.date)} ${rel(r.date)}</span></li>`).join('') + '</ul>' : '<p class="empty">无</p>'}</section>
       <section class="panel"><h3 class="tt">🟠 中优先提醒（${g['中'].length}）</h3>${g['中'].length ? '<ul class="rem-list">' + g['中'].map((r) => `<li class="rem rem-mid"><span class="rem-type">${r.type}</span><span class="rem-proj" data-act="goto-proj" data-id="${r.projectId || ''}">${esc(r.project)}</span><span class="rem-date">${fmtDate(r.date)} ${rel(r.date)}</span></li>`).join('') + '</ul>' : '<p class="empty">无</p>'}</section>

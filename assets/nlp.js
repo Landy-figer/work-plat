@@ -85,10 +85,10 @@
     }
     const best = result.matchedProject ? store.getProject(result.matchedProject) : null;
 
-    // 3) 关键节点（开庭 / 合同到期 / 续费）
+    // 3) 关键节点（开庭 / 合同到期 / 查封到期）
     if (/开庭/.test(text) && result.date) { result.nodes.push({ field: 'hearingDate', label: '开庭日期', date: result.date }); result.summary.push('设置开庭日期：' + fmt(result.date)); }
     if (/(合同到期|到期)/.test(text) && result.date) { result.nodes.push({ field: 'contractExpiryDate', label: '合同到期', date: result.date }); result.summary.push('设置合同到期：' + fmt(result.date)); }
-    if (/(续费|续展|缴费)/.test(text) && result.date) { result.nodes.push({ field: 'renewalDate', label: '续费提醒', date: result.date }); result.summary.push('设置续费提醒：' + fmt(result.date)); }
+    if (/(续封|查封到期|续费|续展|缴费)/.test(text) && result.date) { result.nodes.push({ field: 'renewalDate', label: '查封到期提醒', date: result.date }); result.summary.push('设置查封到期提醒：' + fmt(result.date)); }
 
     // 4) 进展记录（需为动词性用法：后接冒号/逗号/了，避免误伤“进展报告”等名词）
     const progTrig = /(进展|进度|汇报|沟通|情况|补充|说明|备注)[：:，了]/;

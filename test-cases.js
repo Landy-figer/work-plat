@@ -43,6 +43,8 @@ const projects = S.listProjects();
 ok('载入项目数 = 15', projects.length === 15);
 ok('全部项目 cases 为数组（迁移生效）', projects.every((p) => Array.isArray(p.cases)));
 ok('导入项目 notes 为数组（docs→notes 迁移生效）', projects.every((p) => Array.isArray(p.notes)));
+ok('导入项目 fee 为合并后的字符串（旧 feeUpfront/feeLater 已并入）', projects.every((p) => typeof p.fee === 'string' && !('feeUpfront' in p)));
+ok('导入项目 seizures 为数组（旧 collateral/seizedItem 已并入多项）', projects.every((p) => Array.isArray(p.seizures) && !('seizedItem' in p)));
 ok('导入项目 cases 默认空', projects.every((p) => p.cases.length === 0));
 
 console.log('\n[2] 关联案件 CRUD');
@@ -96,6 +98,8 @@ if (fs.existsSync(importPath)) {
   S.importJSON(JSON.stringify(pristine)); // 模拟用户“从备份恢复”原始台账
   ok('导入后所有项目 cases 归一化为数组', S.listProjects().every((p) => Array.isArray(p.cases)));
   ok('导入后所有项目 notes 归一化为数组（旧 docs 已迁移清除）', S.listProjects().every((p) => Array.isArray(p.notes) && !('docs' in p)));
+  ok('导入后所有项目 fee 为字符串（旧 feeUpfront/feeLater 已清除）', S.listProjects().every((p) => typeof p.fee === 'string' && !('feeUpfront' in p) && !('feeLater' in p)));
+  ok('导入后所有项目 seizures 为数组（旧 collateral/seizedItem 已清除）', S.listProjects().every((p) => Array.isArray(p.seizures) && !('seizedItem' in p) && !('collateral' in p)));
   ok('导入后案件可正常新建', (() => { const t = S.listProjects()[0].id; const c = S.saveCase(t, { name: '导入后案件', category: '其他类', status: '进行中' }, true); return !!(c && c.id); })());
 }
 

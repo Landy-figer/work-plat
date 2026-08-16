@@ -408,6 +408,20 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: var(--fw-bold); col
 .hist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .hist li { display: grid; grid-template-columns: 150px 1fr auto; gap: 10px; font-size: var(--fs-sm); color: var(--ink-2); padding-bottom: 8px; border-bottom: 1px dashed var(--line); }
 
+/* ===================== 查封与保全：多项编辑器 ===================== */
+.sz-editor { display: flex; flex-direction: column; gap: 8px; margin-top: 2px; }
+.sz-row { display: grid; grid-template-columns: 134px minmax(0, 1fr) 150px 188px 32px; gap: 8px; align-items: center; background: var(--surface-2); border: 1px solid var(--line-2); border-radius: var(--radius-sm); padding: 7px 9px; }
+.sz-row select, .sz-row input { background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--radius-sm); padding: 7px 9px; color: var(--ink); width: 100%; min-width: 0; }
+.sz-row select:focus, .sz-row input:focus { outline: none; border-color: var(--mc); }
+.sz-computed { font-size: var(--fs-sm); color: var(--muted); line-height: 1.35; }
+.sz-computed b { color: var(--ink); font-weight: var(--fw-semibold); }
+.sz-del { padding: 6px 0; line-height: 1; }
+.sz-empty { font-size: var(--fs-sm); color: var(--muted); padding: 2px 0; }
+.sz-add { align-self: flex-start; }
+.sz-detail { display: flex; flex-direction: column; gap: 5px; }
+.sz-detail-row { font-size: var(--fs-sm); color: var(--ink-2); line-height: 1.45; }
+.sz-detail-row b { color: var(--ink); font-weight: var(--fw-semibold); }
+
 @keyframes pop { from { transform: scale(.96); opacity: .4; } to { transform: scale(1); opacity: 1; } }
 .panel { animation: pop .28s ease-out; }
 
@@ -456,4 +470,7 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: var(--fw-bold); col
   .toolbar .search, .toolbar select, .toolbar input[type=text] { min-width: 0; flex: 1 1 140px; }
   .wk-grid, .mc-grid { min-width: 560px; }
   .wk-scroll { overflow-x: auto; }
+  .sz-row { grid-template-columns: 1fr 1fr; }
+  .sz-computed { grid-column: 1 / -1; }
+  .sz-add { align-self: stretch; }
 }
