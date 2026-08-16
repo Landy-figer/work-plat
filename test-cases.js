@@ -2,7 +2,7 @@
  * 用 Node + localStorage 垫片加载真实 assets/store.js，验证：
  *  1) 项目迁移：导入的 15 项目（无 cases 字段）兼容，cases 默认为空数组
  *  2) 新建/读取/更新/删除关联案件
- *  3) 案件文书 / 进展 CRUD
+ *  3) 案件备注 / 进展 CRUD
  *  4) cases 进入 exportCSV('cases')
  *  5) deriveEvents / reminders 包含案件节点
  */
@@ -42,6 +42,7 @@ console.log('\n[1] 项目迁移与基础兼容');
 const projects = S.listProjects();
 ok('载入项目数 = 15', projects.length === 15);
 ok('全部项目 cases 为数组（迁移生效）', projects.every((p) => Array.isArray(p.cases)));
+ok('导入项目 notes 为数组（docs→notes 迁移生效）', projects.every((p) => Array.isArray(p.notes)));
 ok('导入项目 cases 默认空', projects.every((p) => p.cases.length === 0));
 
 console.log('\n[2] 关联案件 CRUD');
@@ -58,13 +59,13 @@ ok('案件携带类别专属字段', S.getCase(pid, cid).execCourt === '深圳�
 S.saveCase(pid, Object.assign({}, S.getCase(pid, cid), { status: '已结案', feeUpfront: '执行到位 50万' }), false);
 ok('更新案件字段', S.getCase(pid, cid).status === '已结案' && S.getCase(pid, cid).feeUpfront === '执行到位 50万');
 
-console.log('\n[3] 案件文书 / 进展');
+console.log('\n[3] 案件备注 / 进展');
 S.addCaseProgress(pid, cid, { content: '提交变更执行人申请书', author: '我' });
-S.addCaseDoc(pid, cid, { name: '执行裁定书', note: '首封' });
+S.addCaseNote(pid, cid, { recipient: '杜总', content: '执行裁定书：首封', archiveLocation: '档案室A', archiveCabinet: '3号柜' });
 ok('案件进展 +1', S.getCase(pid, cid).progress.length === 1);
-ok('案件文书 +1', S.getCase(pid, cid).docs.length === 1);
-S.deleteCaseDoc(pid, cid, 0);
-ok('案件文书删除', S.getCase(pid, cid).docs.length === 0);
+ok('案件备注 +1', S.getCase(pid, cid).notes.length === 1);
+S.deleteCaseNote(pid, cid, 0);
+ok('案件备注删除', S.getCase(pid, cid).notes.length === 0);
 
 console.log('\n[4] 多案件独立 & 删除');
 S.saveCase(pid, { name: '另案', category: '其他类', status: '进行中' }, true);
@@ -94,6 +95,7 @@ if (fs.existsSync(importPath)) {
   ok('导入源（原始台账）不含 cases 字段', pristine.projects.every((p) => !Array.isArray(p.cases)));
   S.importJSON(JSON.stringify(pristine)); // 模拟用户“从备份恢复”原始台账
   ok('导入后所有项目 cases 归一化为数组', S.listProjects().every((p) => Array.isArray(p.cases)));
+  ok('导入后所有项目 notes 归一化为数组（旧 docs 已迁移清除）', S.listProjects().every((p) => Array.isArray(p.notes) && !('docs' in p)));
   ok('导入后案件可正常新建', (() => { const t = S.listProjects()[0].id; const c = S.saveCase(t, { name: '导入后案件', category: '其他类', status: '进行中' }, true); return !!(c && c.id); })());
 }
 

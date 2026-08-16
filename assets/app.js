@@ -394,14 +394,14 @@
     const tasks = S.listTasks().filter((t) => t.projectId === p.id);
     const mods = projectModules(p);
     const secHtml = mods.map((m) => `<div><div class="kv-sec">${m.section}</div>${m.fields.map((f) => kv(f.label, formatFieldValue(p[f.key], f.type))).join('')}</div>`).join('');
-    const docsHtml = (p.docs && p.docs.length) ? p.docs.map((d, i) => `<li><span class="prog-d">${esc(d.date || '')}</span><span class="prog-c">${esc(d.name)}</span><span class="prog-a">${esc(d.note || '')} · ${esc(d.by || '')} <button class="mini danger" data-act="proj-deldoc" data-id="${p.id}" data-doc="${i}">删</button></span></li>`).join('') : '<li class="empty">暂无文书</li>';
+    const notesHtml = (p.notes && p.notes.length) ? p.notes.map((d, i) => `<li><span class="prog-d">${esc(d.date || '')}</span><span class="prog-c">${esc(d.content || '')}</span><span class="prog-a">${esc(d.recipient ? ('接收人：' + d.recipient) : '')}${d.archiveLocation ? (' · 位置：' + d.archiveLocation) : ''}${d.archiveCabinet ? (' · 柜：' + d.archiveCabinet) : ''}${d.author ? (' · ' + d.author) : ''} <button class="mini danger" data-act="proj-delnote" data-id="${p.id}" data-doc="${i}">删</button></span></li>`).join('') : '<li class="empty">暂无备注</li>';
     return `<div class="proj-detail">
       <div class="kv-grid">${secHtml}</div>
       <div class="kv-sec">关联案件（${esc(String((p.cases || []).length))}）</div>
       <div class="cases-area">${casesHtml(p)}</div>
       <div class="ph"><button class="mini" data-act="case-new" data-id="${p.id}">+ 关联案件</button></div>
-      <div class="kv-sec">文书材料</div>
-      <ul class="prog">${docsHtml}</ul>
+      <div class="kv-sec">其他备注</div>
+      <ul class="prog">${notesHtml}</ul>
       <div class="kv-sec">进展状态</div>
       <ul class="prog">${(p.progress || []).map((x) => `<li><span class="prog-d">${esc(x.date)}</span><span class="prog-c">${esc(x.content)}</span><span class="prog-a">${esc(x.author)}</span></li>`).join('') || '<li class="empty">暂无进展</li>'}</ul>
       <div class="kv-sec">关联任务</div>
@@ -413,9 +413,9 @@
     p = p || {};
     const mods = projectModules(p);
     const secs = mods.map((m) => `<div class="form-sec"><div class="kv-sec">${m.section}</div><div class="form-grid">${m.fields.map((f) => projectField(f, p)).join('')}</div></div>`).join('');
-    const docsSec = `<div class="form-sec"><div class="kv-sec">文书材料（本次新增，留空忽略）</div><div class="form-grid">${field('docName', '文书名称', 'text', '')}${field('docNote', '说明', 'text', '', { wide: true })}</div></div>`;
+    const notesSec = `<div class="form-sec"><div class="kv-sec">其他备注（本次新增，留空忽略）</div><div class="form-grid">${field('noteRecipient', '接收人', 'text', '')}${field('noteContent', '备注', 'text', '', { wide: true })}${field('noteArchiveLocation', '纸质档案位置', 'text', '')}${field('noteArchiveCabinet', '档案柜', 'text', '')}</div></div>`;
     const progSec = `<div class="form-sec"><div class="kv-sec">进展状态（本次新增，留空忽略）</div><div class="form-grid">${field('progressNote', '本次进展', 'textarea', '', { wide: true, rows: 2 })}</div></div>`;
-    return secs + docsSec + progSec;
+    return secs + notesSec + progSec;
   }
   function openProjForm(id, draft) {
     const base = id ? S.getProject(id) : {};
@@ -435,13 +435,13 @@
       });
       data.name = data.name || (base && base.name) || '未命名项目';
       data.tags = v.tags ? v.tags.split(/[,，]/).map((s) => s.trim()).filter(Boolean) : (base ? base.tags : []);
-      data.docs = (base && base.docs) ? base.docs.slice() : [];
+      data.notes = (base && base.notes) ? base.notes.slice() : [];
       data.progress = (base && base.progress) ? base.progress.slice() : [];
       data.cases = (base && base.cases) ? base.cases.slice() : [];
       if (id) { data.id = id; S.saveProject(data, false); }
       else { S.saveProject(data, true); }
       const pid = id || data.id;
-      if (v.docName) S.addDoc(pid, { name: v.docName, note: v.docNote });
+      if (v.noteContent) S.addNote(pid, { recipient: v.noteRecipient, content: v.noteContent, archiveLocation: v.noteArchiveLocation, archiveCabinet: v.noteArchiveCabinet });
       if (v.progressNote) S.addProgress(pid, { content: v.progressNote });
       closeModal(); render();
     });
@@ -476,12 +476,12 @@
   function caseDetailHtml(p, c) {
     const mods = caseModules(c);
     const secHtml = mods.map((m) => `<div><div class="kv-sec">${m.section}</div>${m.fields.map((f) => kv(f.label, formatFieldValue(c[f.key], f.type))).join('')}</div>`).join('');
-    const docsHtml = (c.docs && c.docs.length) ? c.docs.map((d, i) => `<li><span class="prog-d">${esc(d.date || '')}</span><span class="prog-c">${esc(d.name)}</span><span class="prog-a">${esc(d.note || '')} · ${esc(d.by || '')} <button class="mini danger" data-act="case-deldoc" data-pid="${p.id}" data-cid="${c.id}" data-doc="${i}">删</button></span></li>`).join('') : '<li class="empty">暂无文书</li>';
+    const notesHtml = (c.notes && c.notes.length) ? c.notes.map((d, i) => `<li><span class="prog-d">${esc(d.date || '')}</span><span class="prog-c">${esc(d.content || '')}</span><span class="prog-a">${esc(d.recipient ? ('接收人：' + d.recipient) : '')}${d.archiveLocation ? (' · 位置：' + d.archiveLocation) : ''}${d.archiveCabinet ? (' · 柜：' + d.archiveCabinet) : ''}${d.author ? (' · ' + d.author) : ''} <button class="mini danger" data-act="case-delnote" data-pid="${p.id}" data-cid="${c.id}" data-doc="${i}">删</button></span></li>`).join('') : '<li class="empty">暂无备注</li>';
     const progHtml = (c.progress && c.progress.length) ? c.progress.map((x) => `<li><span class="prog-d">${esc(x.date)}</span><span class="prog-c">${esc(x.content)}</span><span class="prog-a">${esc(x.author)}</span></li>`).join('') : '<li class="empty">暂无进展</li>';
     return `<div class="case-detail">
       <div class="kv-grid">${secHtml}</div>
-      <div class="kv-sec">文书材料</div>
-      <ul class="prog">${docsHtml}</ul>
+      <div class="kv-sec">其他备注</div>
+      <ul class="prog">${notesHtml}</ul>
       <div class="kv-sec">进展状态</div>
       <ul class="prog">${progHtml}</ul>
       <div class="ph"><button class="mini" data-act="case-addprog" data-pid="${p.id}" data-cid="${c.id}">+ 进展</button><button class="mini" data-act="case-edit" data-pid="${p.id}" data-cid="${c.id}">编辑</button><button class="mini danger" data-act="case-del" data-pid="${p.id}" data-cid="${c.id}">删除</button></div>
@@ -491,9 +491,9 @@
     c = c || {};
     const mods = caseModules(c);
     const secs = mods.map((m) => `<div class="form-sec"><div class="kv-sec">${m.section}</div><div class="form-grid">${m.fields.map((f) => projectField(f, c)).join('')}</div></div>`).join('');
-    const docsSec = `<div class="form-sec"><div class="kv-sec">文书材料（本次新增，留空忽略）</div><div class="form-grid">${field('docName', '文书名称', 'text', '')}${field('docNote', '说明', 'text', '', { wide: true })}</div></div>`;
+    const notesSec = `<div class="form-sec"><div class="kv-sec">其他备注（本次新增，留空忽略）</div><div class="form-grid">${field('noteRecipient', '接收人', 'text', '')}${field('noteContent', '备注', 'text', '', { wide: true })}${field('noteArchiveLocation', '纸质档案位置', 'text', '')}${field('noteArchiveCabinet', '档案柜', 'text', '')}</div></div>`;
     const progSec = `<div class="form-sec"><div class="kv-sec">进展状态（本次新增，留空忽略）</div><div class="form-grid">${field('progressNote', '本次进展', 'textarea', '', { wide: true, rows: 2 })}</div></div>`;
-    return secs + docsSec + progSec;
+    return secs + notesSec + progSec;
   }
   function openCaseForm(projectId, caseId, draft) {
     const p = S.getProject(projectId); if (!p) return;
@@ -514,12 +514,12 @@
       });
       data.name = data.name || (base && base.name) || '未命名案件';
       data.tags = v.tags ? v.tags.split(/[,，]/).map((s) => s.trim()).filter(Boolean) : (base ? base.tags : []);
-      data.docs = (base && base.docs) ? base.docs.slice() : [];
+      data.notes = (base && base.notes) ? base.notes.slice() : [];
       data.progress = (base && base.progress) ? base.progress.slice() : [];
       if (caseId) { data.id = caseId; S.saveCase(projectId, data, false); }
       else { S.saveCase(projectId, data, true); }
       const cid = caseId || data.id;
-      if (v.docName) S.addCaseDoc(projectId, cid, { name: v.docName, note: v.docNote });
+      if (v.noteContent) S.addCaseNote(projectId, cid, { recipient: v.noteRecipient, content: v.noteContent, archiveLocation: v.noteArchiveLocation, archiveCabinet: v.noteArchiveCabinet });
       if (v.progressNote) S.addCaseProgress(projectId, cid, { content: v.progressNote });
       closeModal(); render();
     });
@@ -704,13 +704,13 @@
       case 'proj-del': confirmModal('确认删除该项目及其关联任务？此操作不可撤销。', () => { S.deleteProject(id); if (state.projOpenId === id) state.projOpenId = null; render(); }, { okText: '删除项目' }); break;
       case 'proj-addtask': openModal('新建关联任务', taskForm({ projectId: id }), (v) => { S.saveTask({ title: v.title, priority: v.priority, projectId: id, dueDate: v.dueDate ? new Date(v.dueDate).toISOString() : null, status: v.status }, true); closeModal(); render(); }); break;
       case 'proj-addprog': openModal('添加进展', field('content', '进展说明', 'textarea', ''), (v) => { S.addProgress(id, { content: v.content }); closeModal(); render(); }); break;
-      case 'proj-deldoc': confirmModal('确认删除该文书？', () => { S.deleteDoc(id, parseInt(el.dataset.doc, 10)); render(); }); break;
+      case 'proj-delnote': confirmModal('确认删除该备注？', () => { S.deleteNote(id, parseInt(el.dataset.doc, 10)); render(); }); break;
       case 'case-new': openCaseForm(id, null); break;
       case 'case-toggle': { const cid = el.dataset.cid; state.openCases[cid] = !state.openCases[cid]; render(); break; }
       case 'case-edit': openCaseForm(el.dataset.pid, el.dataset.cid); break;
       case 'case-del': confirmModal('确认删除该关联案件？删除后不可恢复。', () => { S.deleteCase(el.dataset.pid, el.dataset.cid); render(); }); break;
       case 'case-addprog': openModal('添加案件进展', field('content', '进展说明', 'textarea', ''), (v) => { S.addCaseProgress(el.dataset.pid, el.dataset.cid, { content: v.content }); closeModal(); render(); }); break;
-      case 'case-deldoc': confirmModal('确认删除该案件文书？', () => { S.deleteCaseDoc(el.dataset.pid, el.dataset.cid, parseInt(el.dataset.doc, 10)); render(); }); break;
+      case 'case-delnote': confirmModal('确认删除该案件备注？', () => { S.deleteCaseNote(el.dataset.pid, el.dataset.cid, parseInt(el.dataset.doc, 10)); render(); }); break;
       case 'evt-new': openModal('新建日程', field('title', '标题', 'text', '') + field('start', '开始时间', 'datetime', '') + field('end', '结束时间', 'datetime', ''), (v) => { S.saveManualEvent({ title: v.title, start: v.start ? new Date(v.start).toISOString() : new Date().toISOString(), end: v.end ? new Date(v.end).toISOString() : null, projectId: null }, true); closeModal(); render(); }); break;
       case 'evt-open': { const k = el.dataset.kind, ref = el.dataset.ref; if ((k === 'task') && ref) { const t = S.getTask(ref); if (t) openModal('任务', `<div class="detail"><div class="dl"><div><b>任务</b>${esc(t.title)}</div><div><b>优先级</b>${t.priority}</div><div><b>截止</b>${fmtDT(t.dueDate)}</div><div><b>状态</b>${t.status}</div></div></div>`, null, { readonly: true }); } else if ((k === 'hearing' || k === 'contract' || k === 'renewal') && ref) { state.projOpenId = ref; navigate('projects'); } break; }
       case 'cal-prev': state.calDate = shift(state.calDate, state.calMode === 'week' ? -7 : -1); render(); break;

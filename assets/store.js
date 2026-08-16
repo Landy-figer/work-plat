@@ -77,7 +77,7 @@
         createdAt: d(-150), updatedAt: d(-1)
       }
     ];
-    projects.forEach((p) => { if (!Array.isArray(p.cases)) p.cases = []; });
+    projects.forEach((p) => { if (!Array.isArray(p.cases)) p.cases = []; if (!Array.isArray(p.notes)) p.notes = []; });
     const tasks = [
       { id: 'tsk_seed1', title: '提交百高项目处置进展报告', dueDate: d(3, 18, 0), projectId: 'prj_seed1', status: '待办', createdAt: d(-4), completedAt: null, history: [{ date: d(-4), from: '—', to: '待办', by: '我' }] },
       { id: 'tsk_seed2', title: '明月地产合同二次审阅', dueDate: d(8, 18, 0), projectId: 'prj_seed2', status: '待办', createdAt: d(-3), completedAt: null, history: [{ date: d(-3), from: '—', to: '待办', by: '我' }] },
@@ -116,7 +116,7 @@
       const raw = global.localStorage.getItem(DB_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (parsed && parsed.projects) { parsed.clients = parsed.clients || []; parsed.judges = parsed.judges || []; parsed.projects.forEach((p) => { if (!Array.isArray(p.cases)) p.cases = []; }); return parsed; }
+        if (parsed && parsed.projects) { parsed.clients = parsed.clients || []; parsed.judges = parsed.judges || []; const cur = (parsed.meta && parsed.meta.currentUser) || '我'; parsed.projects.forEach((p) => { if (!Array.isArray(p.cases)) p.cases = []; migrateNotes(p, cur); (p.cases || []).forEach((c) => migrateNotes(c, cur)); }); return parsed; }
       }
     } catch (e) { /* ignore */ }
     const s = seed();
@@ -159,6 +159,20 @@
   /* ---------- 通用 CRUD ---------- */
   function find(arr, id) { return arr.find((x) => x.id === id); }
 
+  /* 旧版「文书材料」(docs) 迁移为「其他备注」(notes)：保留信息、删除 docs 字段。
+   * note：{ recipient 接收人, content 备注, archiveLocation 纸质档案位置, archiveCabinet 档案柜, author, date } */
+  function migrateNotes(o, curUser) {
+    if (!o) return;
+    if (!Array.isArray(o.notes)) {
+      if (Array.isArray(o.docs)) {
+        o.notes = o.docs.map((d) => ({ recipient: d.by || '', content: [d.name, d.note].filter(Boolean).join('：'), archiveLocation: '', archiveCabinet: '', author: d.by || curUser || '我', date: d.date || todayStr() }));
+      } else {
+        o.notes = [];
+      }
+    }
+    delete o.docs;
+  }
+
   const store = {
     get DB() { return DB; },
     meta() { return DB.meta; },
@@ -169,7 +183,7 @@
     getProject(id) { return find(DB.projects, id); },
     saveProject(p, isNew) {
       p.cases = Array.isArray(p.cases) ? p.cases : [];
-      if (isNew) { p.id = uid('prj'); p.createdAt = new Date().toISOString(); p.progress = p.progress || []; p.docs = p.docs || []; DB.projects.push(p); audit('新建项目', p.name); }
+      if (isNew) { p.id = uid('prj'); p.createdAt = new Date().toISOString(); p.progress = p.progress || []; p.notes = p.notes || []; DB.projects.push(p); audit('新建项目', p.name); }
       else { const o = find(DB.projects, p.id); if (!o) return; Object.assign(o, p); DB.projects[DB.projects.indexOf(o)] = o; audit('更新项目', p.name); }
       p.updatedAt = new Date().toISOString();
       persist();
@@ -189,20 +203,20 @@
       audit('新增进展', o.name + '：' + note.content.slice(0, 20));
       persist();
     },
-    addDoc(id, doc) {
+    addNote(id, note) {
       const o = find(DB.projects, id); if (!o) return;
-      o.docs = o.docs || [];
-      o.docs.unshift({ name: doc.name, note: doc.note || '', by: doc.by || DB.meta.currentUser, date: doc.date || todayStr() });
+      o.notes = o.notes || [];
+      o.notes.unshift({ recipient: note.recipient || '', content: note.content || '', archiveLocation: note.archiveLocation || '', archiveCabinet: note.archiveCabinet || '', author: note.author || DB.meta.currentUser, date: note.date || todayStr() });
       o.updatedAt = new Date().toISOString();
-      audit('新增文书', o.name + '：' + (doc.name || '').slice(0, 20));
+      audit('新增备注', o.name + '：' + (note.content || '').slice(0, 20));
       persist();
     },
-    deleteDoc(id, idx) {
-      const o = find(DB.projects, id); if (!o || !o.docs) return;
-      const d = o.docs[idx]; if (!d) return;
-      o.docs.splice(idx, 1);
+    deleteNote(id, idx) {
+      const o = find(DB.projects, id); if (!o || !o.notes) return;
+      const d = o.notes[idx]; if (!d) return;
+      o.notes.splice(idx, 1);
       o.updatedAt = new Date().toISOString();
-      audit('删除文书', o.name + '：' + (d.name || '').slice(0, 20));
+      audit('删除备注', o.name + '：' + (d.content || '').slice(0, 20));
       persist();
     },
 
@@ -212,7 +226,7 @@
     saveCase(projectId, c, isNew) {
       const p = find(DB.projects, projectId); if (!p) return null;
       if (!Array.isArray(p.cases)) p.cases = [];
-      if (isNew) { c.id = uid('cse'); c.createdAt = new Date().toISOString(); c.progress = c.progress || []; c.docs = c.docs || []; p.cases.push(c); audit('新建关联案件', p.name + ' / ' + (c.name || '未命名案件')); }
+      if (isNew) { c.id = uid('cse'); c.createdAt = new Date().toISOString(); c.progress = c.progress || []; c.notes = c.notes || []; p.cases.push(c); audit('新建关联案件', p.name + ' / ' + (c.name || '未命名案件')); }
       else { const o = p.cases.find((x) => x.id === c.id); if (!o) return null; Object.assign(o, c); p.cases[p.cases.indexOf(o)] = o; audit('更新关联案件', p.name + ' / ' + (c.name || '未命名案件')); }
       c.updatedAt = new Date().toISOString(); p.updatedAt = new Date().toISOString(); persist();
       return c;
@@ -234,22 +248,22 @@
       audit('新增案件进展', p.name + ' / ' + (c.name || '未命名案件') + '：' + note.content.slice(0, 20));
       persist();
     },
-    addCaseDoc(projectId, caseId, doc) {
+    addCaseNote(projectId, caseId, note) {
       const p = find(DB.projects, projectId); if (!p || !p.cases) return;
       const c = p.cases.find((x) => x.id === caseId); if (!c) return;
-      c.docs = c.docs || [];
-      c.docs.unshift({ name: doc.name, note: doc.note || '', by: doc.by || DB.meta.currentUser, date: doc.date || todayStr() });
+      c.notes = c.notes || [];
+      c.notes.unshift({ recipient: note.recipient || '', content: note.content || '', archiveLocation: note.archiveLocation || '', archiveCabinet: note.archiveCabinet || '', author: note.author || DB.meta.currentUser, date: note.date || todayStr() });
       c.updatedAt = new Date().toISOString(); p.updatedAt = new Date().toISOString();
-      audit('新增案件文书', p.name + ' / ' + (c.name || '未命名案件'));
+      audit('新增案件备注', p.name + ' / ' + (c.name || '未命名案件'));
       persist();
     },
-    deleteCaseDoc(projectId, caseId, idx) {
+    deleteCaseNote(projectId, caseId, idx) {
       const p = find(DB.projects, projectId); if (!p || !p.cases) return;
-      const c = p.cases.find((x) => x.id === caseId); if (!c || !c.docs) return;
-      const d = c.docs[idx]; if (!d) return;
-      c.docs.splice(idx, 1);
+      const c = p.cases.find((x) => x.id === caseId); if (!c || !c.notes) return;
+      const d = c.notes[idx]; if (!d) return;
+      c.notes.splice(idx, 1);
       c.updatedAt = new Date().toISOString(); p.updatedAt = new Date().toISOString();
-      audit('删除案件文书', p.name + ' / ' + (c.name || '未命名案件'));
+      audit('删除案件备注', p.name + ' / ' + (c.name || '未命名案件'));
       persist();
     },
 
@@ -408,7 +422,8 @@
       const parsed = JSON.parse(text);
       if (!parsed.projects) throw new Error('无效的数据文件');
       parsed.clients = parsed.clients || []; parsed.judges = parsed.judges || [];
-      parsed.projects.forEach((p) => { if (!Array.isArray(p.cases)) p.cases = []; });
+      const cur = (parsed.meta && parsed.meta.currentUser) || '我';
+      parsed.projects.forEach((p) => { if (!Array.isArray(p.cases)) p.cases = []; migrateNotes(p, cur); (p.cases || []).forEach((c) => migrateNotes(c, cur)); });
       DB = parsed; persist();
       audit('导入数据', '从备份恢复');
       return true;
