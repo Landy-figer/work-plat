@@ -59,14 +59,17 @@ ok('updateProgress 改写日期', (S.getProject(pid).progress[idx].date || '').i
 S.deleteProgress(pid, idx);
 ok('deleteProgress -1', S.getProject(pid).progress.length === before);
 
-console.log('\n[4] 迁移：旧 creditor 字符串 → creditors 多项数组');
-S.importJSON(JSON.stringify({ projects: [{ id: 'old_x', name: '旧格式项目', category: '破产类', creditor: '老债权人A', contractLawyer: '旧委托合同/我', relatedCases: '旧备注', caseNo: '—' }], clients: [], judges: [], lawItems: [], tasks: [], audit: [], meta: { lastSync: null, currentUser: '我' } }));
-const ox = S.getProject('old_x');
-ok('旧 creditor 字符串 → creditors 数组(1 项)', Array.isArray(ox.creditors) && ox.creditors.length === 1 && ox.creditors[0].name === '老债权人A');
-ok('旧 creditor 键已清除', !('creditor' in ox));
+console.log('\n[4] importJSON 归一化（当前格式，无旧字段迁移）');
+S.importJSON(JSON.stringify({ projects: [{ id: 'cur_x', name: '当前格式项目', category: '破产类', agentLawyer: '《委托代理合同》/我', creditors: [{ id: 'cr_x', name: '债权人X', transfers: [] }], caseNo: '—' }], clients: [], judges: [], tasks: [], audit: [], meta: { lastSync: null, currentUser: '我' } }));
+const cx = S.getProject('cur_x');
+ok('当前格式 creditors 数组原样保留', Array.isArray(cx.creditors) && cx.creditors.length === 1 && cx.creditors[0].name === '债权人X');
+ok('当前格式 agentLawyer 原样保留', cx.agentLawyer === '《委托代理合同》/我');
+ok('当前格式无 contractLawyer 旧键', !('contractLawyer' in cx));
 
-console.log('\n[5] 迁移：旧 contractLawyer → agentLawyer');
-ok('旧 contractLawyer → agentLawyer', ox.agentLawyer === '旧委托合同/我' && !('contractLawyer' in ox));
+console.log('\n[5] 导入旧格式字段不报错（仅不再自动转换）');
+S.importJSON(JSON.stringify({ projects: [{ id: 'old_x', name: '含旧字段项目', category: '破产类', creditor: '老债权人A', contractLawyer: '旧委托合同/我', feeUpfront: '1万', docs: [{ by: '我', name: 'a', note: 'b' }] }], clients: [], judges: [], tasks: [], audit: [], meta: { lastSync: null, currentUser: '我' } }));
+const ox = S.getProject('old_x');
+ok('含旧字段的项目可正常导入（不抛错）', !!ox);
 
 console.log('\n[6] 导出：代理律师 / 债权持有人列');
 const csv = S.exportCSV('projects');

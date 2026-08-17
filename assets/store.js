@@ -19,7 +19,7 @@
 
   /* 保险库锁定时使用的空壳，避免用任何数据覆盖未解密的原文 */
   function emptyDb() {
-    return { projects: [], tasks: [], clients: [], judges: [], lawItems: [], events: [], audit: [], meta: { lastSync: null, currentUser: '我' } };
+    return { projects: [], tasks: [], clients: [], judges: [], events: [], audit: [], meta: { lastSync: null, currentUser: '我' } };
   }
 
   /* ---------- 持久化 ---------- */
@@ -41,8 +41,9 @@
         if (parsed && parsed.projects) {
           parsed.clients = parsed.clients || []; parsed.judges = parsed.judges || [];
           parsed.events = Array.isArray(parsed.events) ? parsed.events : []; parsed.events.forEach((e) => { if (e.done === undefined) e.done = false; });
+      delete parsed.lawItems;
           const cur = (parsed.meta && parsed.meta.currentUser) || '我';
-          parsed.projects.forEach((p) => { if (!Array.isArray(p.cases)) p.cases = []; if (!Array.isArray(p.doneEvents)) p.doneEvents = []; migrateNotes(p, cur); migrateFee(p); migrateSeizures(p); migrateCreditors(p); migrateAgent(p); (p.cases || []).forEach((c) => { migrateNotes(c, cur); migrateFee(c); migrateSeizures(c); migrateCreditors(c); migrateAgent(c); if (!Array.isArray(c.doneEvents)) c.doneEvents = []; }); });
+          parsed.projects.forEach((p) => { ["cases","notes","seizures","doneEvents"].forEach((k) => { if (!Array.isArray(p[k])) p[k] = []; }); (p.cases || []).forEach((c) => { ["notes","doneEvents"].forEach((k) => { if (!Array.isArray(c[k])) c[k] = []; }); }); });
           return parsed;
         }
       }
@@ -103,66 +104,6 @@
   /* ---------- 通用 CRUD ---------- */
   function find(arr, id) { return arr.find((x) => x.id === id); }
 
-  /* 旧版「文书材料」(docs) 迁移为「其他备注」(notes)：保留信息、删除 docs 字段。
-   * note：{ recipient 接收人, content 备注, archiveLocation 纸质档案位置, archiveCabinet 档案柜, author, date } */
-  function migrateNotes(o, curUser) {
-    if (!o) return;
-    if (!Array.isArray(o.notes)) {
-      if (Array.isArray(o.docs)) {
-        o.notes = o.docs.map((d) => ({ recipient: d.by || '', content: [d.name, d.note].filter(Boolean).join('：'), archiveLocation: '', archiveCabinet: '', author: d.by || curUser || '我', date: d.date || todayStr() }));
-      } else {
-        o.notes = [];
-      }
-    }
-    delete o.docs;
-  }
-
-  /* 旧版「律师费(前期/固定)」+「律师费(后期)」合并为单一「律师费」 */
-  function migrateFee(o) {
-    if (!o) return;
-    if (o.fee == null || o.fee === '') {
-      const parts = [o.feeUpfront, o.feeLater].map((x) => (x == null ? '' : ('' + x).trim())).filter(Boolean);
-      o.fee = parts.length ? parts.join(' / ') : ''; // 归一化为字符串，避免 undefined
-    }
-    delete o.feeUpfront; delete o.feeLater;
-  }
-  /* 旧版 抵质押物/查封物/查封起算日/查封截止日（标量）→ 多项 seizures 数组（按类型自动计算期限） */
-  function migrateSeizures(o) {
-    if (!o) return;
-    if (!Array.isArray(o.seizures)) {
-      const name = [o.seizedItem, o.collateral].map((x) => (x == null ? '' : ('' + x).trim())).filter(Boolean).join('、');
-      const start = o.seizureStart || '';
-      const end = o.seizureEnd || '';
-      if (name || start || end) {
-        const item = { type: '不动产', name: name, start: start, end: end, renewalEnd: '' };
-        if (start) { const c = computeSeizureEnd(item.type, start); item.end = c.end; item.renewalEnd = c.renewalEnd; }
-        o.seizures = [item];
-      } else {
-        o.seizures = [];
-      }
-    }
-    delete o.seizedItem; delete o.collateral; delete o.seizureStart; delete o.seizureEnd;
-  }
-  /* 旧版「代理合同及代理律师」(contractLawyer) → 单一「代理律师」(agentLawyer) */
-  function migrateAgent(o) {
-    if (!o) return;
-    if ((o.agentLawyer == null || o.agentLawyer === '') && o.contractLawyer != null) {
-      o.agentLawyer = ('' + o.contractLawyer).trim();
-    }
-    delete o.contractLawyer;
-  }
-  /* 旧版单一「债权持有人」(creditor) → 多项 creditors 数组（每项含债权流转明细 transfers） */
-  function migrateCreditors(o) {
-    if (!o) return;
-    if (!Array.isArray(o.creditors)) {
-      if (o.creditor) {
-        o.creditors = [{ id: uid('cr'), name: ('' + o.creditor).trim(), transfers: [] }];
-      } else {
-        o.creditors = [];
-      }
-    }
-    delete o.creditor;
-  }
 
   /* 查封 / 冻结期限：按财产类型确定上限；续封期限 ≤ 原期限 1/2（法源：查封规定 2020修正 第1条） */
   const SEIZURE_PERIODS = { '资金/银行存款': 12, '动产': 24, '不动产': 36, '其他财产权': 36 }; // 单位：月
@@ -199,7 +140,7 @@
     }).join(' | ');
   }
 
-  /* 至此所有 const（SEIZURE_PERIODS 等）与迁移/计算辅助函数均已声明完成，可安全调用 load() 触发迁移 */
+  /* 至此计算辅助函数均已声明完成，可安全调用 load() */
   DB = load();
 
   /* 拖拽重排：把 ids 指定的子集按新顺序排好，未参与项保持原有相对顺序；整块插入到首个参与项的原位置 */
@@ -419,10 +360,6 @@
     },
     deleteJudge(id) { const o = find(DB.judges, id); if (!o) return; DB.judges = DB.judges.filter((x) => x.id !== id); audit('删除经办法官', o.name); persist(); },
 
-    /* == 法规 == */
-    listLaw() { return DB.lawItems.slice(); },
-    saveLaw(l, isNew) { if (isNew) { l.id = uid('law'); DB.lawItems.push(l); } else { const o = find(DB.lawItems, l.id); if (!o) return; Object.assign(o, l); } persist(); audit(isNew ? '新增法规' : '更新法规', l.title); },
-    deleteLaw(id) { DB.lawItems = DB.lawItems.filter((x) => x.id !== id); audit('删除法规', id); persist(); },
 
     /* == 审计（仅保留数据层，UI 入口已移除） == */
 
@@ -568,8 +505,9 @@
       if (!parsed.projects) throw new Error('无效的数据文件');
       parsed.clients = parsed.clients || []; parsed.judges = parsed.judges || [];
       parsed.events = Array.isArray(parsed.events) ? parsed.events : []; parsed.events.forEach((e) => { if (e.done === undefined) e.done = false; });
+      delete parsed.lawItems;
       const cur = (parsed.meta && parsed.meta.currentUser) || '我';
-      parsed.projects.forEach((p) => { if (!Array.isArray(p.cases)) p.cases = []; if (!Array.isArray(p.doneEvents)) p.doneEvents = []; migrateNotes(p, cur); migrateFee(p); migrateSeizures(p); migrateCreditors(p); migrateAgent(p); (p.cases || []).forEach((c) => { migrateNotes(c, cur); migrateFee(c); migrateSeizures(c); migrateCreditors(c); migrateAgent(c); if (!Array.isArray(c.doneEvents)) c.doneEvents = []; }); });
+      parsed.projects.forEach((p) => { ["cases","notes","seizures","doneEvents"].forEach((k) => { if (!Array.isArray(p[k])) p[k] = []; }); (p.cases || []).forEach((c) => { ["notes","doneEvents"].forEach((k) => { if (!Array.isArray(c[k])) c[k] = []; }); }); });
       DB = parsed; persist();
       audit('导入数据', '从备份恢复');
       return true;
@@ -587,7 +525,7 @@
       db.clients = db.clients || []; db.judges = db.judges || [];
       db.events = Array.isArray(db.events) ? db.events : []; db.events.forEach((e) => { if (e.done === undefined) e.done = false; });
       const cur = (db.meta && db.meta.currentUser) || '我';
-      (db.projects || []).forEach((p) => { if (!Array.isArray(p.cases)) p.cases = []; if (!Array.isArray(p.doneEvents)) p.doneEvents = []; migrateNotes(p, cur); migrateFee(p); migrateSeizures(p); migrateCreditors(p); migrateAgent(p); (p.cases || []).forEach((c) => { migrateNotes(c, cur); migrateFee(c); migrateSeizures(c); migrateCreditors(c); migrateAgent(c); if (!Array.isArray(c.doneEvents)) c.doneEvents = []; }); });
+      (db.projects || []).forEach((p) => { ["cases","notes","seizures","doneEvents"].forEach((k) => { if (!Array.isArray(p[k])) p[k] = []; }); (p.cases || []).forEach((c) => { ["notes","doneEvents"].forEach((k) => { if (!Array.isArray(c[k])) c[k] = []; }); }); });
       DB = db;
       return DB;
     },
