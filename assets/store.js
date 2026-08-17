@@ -71,13 +71,14 @@
         hearingDate: d(2, 14, 0), contractExpiryDate: null, renewalDate: d(10),
         tags: ['仲裁', '劳动法'], status: '进行中',
         manager: '我', managerContact: '13800001111', contact: '赵主管', contactContact: '13900005555',
-        todo: '开庭前完成证据原件核对', handover: '—',
+todo: '开庭前完成证据原件核对', handover: '—',
         court: '北京市海淀区劳动人事争议仲裁委员会', claim: '确认劳动关系并支付经济补偿', stage: '仲裁', limitation: null, evidence: '',
         progress: [{ date: '2026-02-15', content: '收集劳动关系证据，撰写仲裁申请书。', author: '我' }],
+        doneEvents: [],
         createdAt: d(-150), updatedAt: d(-1)
       }
     ];
-    projects.forEach((p) => { if (!Array.isArray(p.cases)) p.cases = []; if (!Array.isArray(p.notes)) p.notes = []; });
+    projects.forEach((p) => { if (!Array.isArray(p.cases)) p.cases = []; if (!Array.isArray(p.notes)) p.notes = []; if (!Array.isArray(p.doneEvents)) p.doneEvents = []; (p.cases || []).forEach((c) => { if (!Array.isArray(c.doneEvents)) c.doneEvents = []; }); });
     const tasks = [
       { id: 'tsk_seed1', title: '提交百高项目处置进展报告', dueDate: d(3, 18, 0), projectId: 'prj_seed1', status: '待办', createdAt: d(-4), completedAt: null, history: [{ date: d(-4), from: '—', to: '待办', by: '我' }] },
       { id: 'tsk_seed2', title: '明月地产合同二次审阅', dueDate: d(8, 18, 0), projectId: 'prj_seed2', status: '待办', createdAt: d(-3), completedAt: null, history: [{ date: d(-3), from: '—', to: '待办', by: '我' }] },
@@ -100,7 +101,7 @@
       { id: 'law_seed4', title: '《中华人民共和国民事诉讼法》第65条', category: '诉讼法', content: '当事人对自己提出的主张应当及时提供证据。人民法院根据当事人的主张和案件审理情况，确定当事人应当提供的证据及其期限。' }
     ];
     return {
-      projects, tasks, clients, judges, lawItems,
+      projects, tasks, clients, judges, lawItems, events: [],
       audit: [{ id: uid('aud'), ts: d(-1), user: '系统', action: '初始化', detail: '载入示范数据' }],
       meta: { lastSync: null, currentUser: '我' }
     };
@@ -108,7 +109,7 @@
 
   /* 保险库锁定时使用的空壳，避免用种子数据覆盖未解密的原文 */
   function emptyDb() {
-    return { projects: [], tasks: [], clients: [], judges: [], lawItems: [], audit: [], meta: { lastSync: null, currentUser: '我' } };
+    return { projects: [], tasks: [], clients: [], judges: [], lawItems: [], events: [], audit: [], meta: { lastSync: null, currentUser: '我' } };
   }
 
   /* ---------- 持久化 ---------- */
@@ -129,8 +130,9 @@
         const parsed = JSON.parse(raw);
         if (parsed && parsed.projects) {
           parsed.clients = parsed.clients || []; parsed.judges = parsed.judges || [];
+          parsed.events = Array.isArray(parsed.events) ? parsed.events : []; parsed.events.forEach((e) => { if (e.done === undefined) e.done = false; });
           const cur = (parsed.meta && parsed.meta.currentUser) || '我';
-          parsed.projects.forEach((p) => { if (!Array.isArray(p.cases)) p.cases = []; migrateNotes(p, cur); migrateFee(p); migrateSeizures(p); migrateCreditors(p); migrateAgent(p); (p.cases || []).forEach((c) => { migrateNotes(c, cur); migrateFee(c); migrateSeizures(c); migrateCreditors(c); migrateAgent(c); }); });
+          parsed.projects.forEach((p) => { if (!Array.isArray(p.cases)) p.cases = []; if (!Array.isArray(p.doneEvents)) p.doneEvents = []; migrateNotes(p, cur); migrateFee(p); migrateSeizures(p); migrateCreditors(p); migrateAgent(p); (p.cases || []).forEach((c) => { migrateNotes(c, cur); migrateFee(c); migrateSeizures(c); migrateCreditors(c); migrateAgent(c); if (!Array.isArray(c.doneEvents)) c.doneEvents = []; }); });
           return parsed;
         }
       }
@@ -514,12 +516,10 @@
 
     /* == 审计（仅保留数据层，UI 入口已移除） == */
 
-    /* == 日程事件（任务/开庭自动同步） == */
-    // 日程事件由任务与项目关键节点派生，这里提供只读聚合 + 手动事件存储
-    events: [], // 手动添加的日程事件（非任务派生）
-    listManualEvents() { return this.events; },
-    saveManualEvent(e, isNew) { if (isNew) e.id = uid('evt'); this.events.push(e); audit('新增日程', e.title); persist(); return e; },
-    deleteManualEvent(id) { this.events = this.events.filter((x) => x.id !== id); audit('删除日程', id); persist(); },
+    /* == 日程事件（手动事件存入 DB.events，与项目/案件日期派生的日程共用"已完成"语义） == */
+    listManualEvents() { return DB.events; },
+    saveManualEvent(e, isNew) { if (isNew) e.id = uid('evt'); if (e.done === undefined) e.done = false; DB.events.push(e); audit('新增日程', e.title); persist(); return e; },
+    deleteManualEvent(id) { DB.events = DB.events.filter((x) => x.id !== id); audit('删除日程', id); persist(); },
 
     /* == 派生日程：把任务截止、开庭、合同到期、查封到期映射为事件 == */
     deriveEvents() {
@@ -529,42 +529,100 @@
         evts.push({ id: 'evt_task_' + t.id, kind: 'task', refId: t.id, title: '✅ 任务：' + t.title, start: t.dueDate, end: t.dueDate, projectId: t.projectId, allDay: true });
       });
       DB.projects.forEach((p) => {
-        if (p.hearingDate) evts.push({ id: 'evt_hearing_' + p.id, kind: 'hearing', refId: p.id, title: '⚖️ 开庭：' + p.name, start: p.hearingDate, end: p.hearingDate, projectId: p.id, allDay: false });
-        if (p.contractExpiryDate) evts.push({ id: 'evt_cexp_' + p.id, kind: 'contract', refId: p.id, title: '📄 合同到期：' + p.name, start: p.contractExpiryDate, end: p.contractExpiryDate, projectId: p.id, allDay: true });
-        if (p.renewalDate) evts.push({ id: 'evt_ren_' + p.id, kind: 'renewal', refId: p.id, title: '🔔 查封到期提醒：' + p.name, start: p.renewalDate, end: p.renewalDate, projectId: p.id, allDay: true });
+        const de = p.doneEvents || [];
+        if (p.hearingDate) evts.push({ id: 'evt_hearing_' + p.id, kind: 'hearing', refId: p.id, title: '⚖️ 开庭：' + p.name, start: p.hearingDate, end: p.hearingDate, projectId: p.id, allDay: false, done: de.includes('hearing') });
+        if (p.contractExpiryDate) evts.push({ id: 'evt_cexp_' + p.id, kind: 'contract', refId: p.id, title: '📄 合同到期：' + p.name, start: p.contractExpiryDate, end: p.contractExpiryDate, projectId: p.id, allDay: true, done: de.includes('contract') });
+        if (p.renewalDate) evts.push({ id: 'evt_ren_' + p.id, kind: 'renewal', refId: p.id, title: '🔔 查封到期提醒：' + p.name, start: p.renewalDate, end: p.renewalDate, projectId: p.id, allDay: true, done: de.includes('renewal') });
         (p.cases || []).forEach((c) => {
           const cid = p.id + '_' + c.id;
-          if (c.hearingDate) evts.push({ id: 'evt_hearing_' + cid, kind: 'hearing', refId: p.id, title: '⚖️ 开庭：' + (c.name || '关联案件'), start: c.hearingDate, end: c.hearingDate, projectId: p.id, allDay: false });
-          if (c.contractExpiryDate) evts.push({ id: 'evt_cexp_' + cid, kind: 'contract', refId: p.id, title: '📄 合同到期：' + (c.name || '关联案件'), start: c.contractExpiryDate, end: c.contractExpiryDate, projectId: p.id, allDay: true });
-          if (c.renewalDate) evts.push({ id: 'evt_ren_' + cid, kind: 'renewal', refId: p.id, title: '🔔 查封到期提醒：' + (c.name || '关联案件'), start: c.renewalDate, end: c.renewalDate, projectId: p.id, allDay: true });
+          const cde = c.doneEvents || [];
+          if (c.hearingDate) evts.push({ id: 'evt_hearing_' + cid, kind: 'hearing', refId: p.id, caseId: c.id, title: '⚖️ 开庭：' + (c.name || '关联案件'), start: c.hearingDate, end: c.hearingDate, projectId: p.id, allDay: false, done: cde.includes('hearing') });
+          if (c.contractExpiryDate) evts.push({ id: 'evt_cexp_' + cid, kind: 'contract', refId: p.id, caseId: c.id, title: '📄 合同到期：' + (c.name || '关联案件'), start: c.contractExpiryDate, end: c.contractExpiryDate, projectId: p.id, allDay: true, done: cde.includes('contract') });
+          if (c.renewalDate) evts.push({ id: 'evt_ren_' + cid, kind: 'renewal', refId: p.id, caseId: c.id, title: '🔔 查封到期提醒：' + (c.name || '关联案件'), start: c.renewalDate, end: c.renewalDate, projectId: p.id, allDay: true, done: cde.includes('renewal') });
         });
       });
-      this.events.forEach((e) => evts.push(Object.assign({ kind: 'manual' }, e)));
+      DB.events.forEach((e) => evts.push(Object.assign({ kind: 'manual', done: !!e.done }, e)));
       return evts;
     },
 
-    /* == 智能提醒预警 == */
-    reminders() {
+    /* == 提醒拆分：日程提醒 / 任务提醒 双通道 ==
+       设计约束：日程数据仅存在于「日程管理」模块（项目/案件日期字段 + 手动日程事件），
+       不展示、也不同步到任务管理界面；任务管理界面只负责任务相关的提醒与展示。 */
+
+    /* 日程提醒：仅来源于日程管理模块（开庭/合同到期/查封到期 + 手动日程事件），不含任何任务 */
+    scheduleReminders(days) {
+      const win = (typeof days === 'number') ? days : 14;
       const out = [];
       const today = new Date(); today.setHours(0, 0, 0, 0);
-      const within = (isoStr, days) => { if (!isoStr) return false; const d = new Date(isoStr); d.setHours(0, 0, 0, 0); const diff = (d - today) / 86400000; return diff >= 0 && diff <= days; };
+      const within = (isoStr, d) => { if (!isoStr) return false; const x = new Date(isoStr); x.setHours(0, 0, 0, 0); const diff = (x - today) / 86400000; return diff >= 0 && diff <= d; };
       DB.projects.forEach((p) => {
-        if (within(p.hearingDate, 14)) out.push({ level: '高', type: '开庭日期', project: p.name, date: p.hearingDate, projectId: p.id });
-        if (within(p.contractExpiryDate, 14)) out.push({ level: '高', type: '合同到期', project: p.name, date: p.contractExpiryDate, projectId: p.id });
-        if (within(p.renewalDate, 14)) out.push({ level: '中', type: '查封到期提醒', project: p.name, date: p.renewalDate, projectId: p.id });
+        if (within(p.hearingDate, win)) out.push({ level: '高', type: '开庭日期', kind: 'hearing', project: p.name, date: p.hearingDate, projectId: p.id });
+        if (within(p.contractExpiryDate, win)) out.push({ level: '高', type: '合同到期', kind: 'contract', project: p.name, date: p.contractExpiryDate, projectId: p.id });
+        if (within(p.renewalDate, win)) out.push({ level: '中', type: '查封到期提醒', kind: 'renewal', project: p.name, date: p.renewalDate, projectId: p.id });
         (p.cases || []).forEach((c) => {
           const nm = p.name + ' / ' + (c.name || '关联案件');
-          if (within(c.hearingDate, 14)) out.push({ level: '高', type: '开庭日期', project: nm, date: c.hearingDate, projectId: p.id });
-          if (within(c.contractExpiryDate, 14)) out.push({ level: '高', type: '合同到期', project: nm, date: c.contractExpiryDate, projectId: p.id });
-          if (within(c.renewalDate, 14)) out.push({ level: '中', type: '查封到期提醒', project: nm, date: c.renewalDate, projectId: p.id });
+          if (within(c.hearingDate, win)) out.push({ level: '高', type: '开庭日期', kind: 'hearing', caseId: c.id, project: nm, date: c.hearingDate, projectId: p.id });
+          if (within(c.contractExpiryDate, win)) out.push({ level: '高', type: '合同到期', kind: 'contract', caseId: c.id, project: nm, date: c.contractExpiryDate, projectId: p.id });
+          if (within(c.renewalDate, win)) out.push({ level: '中', type: '查封到期提醒', kind: 'renewal', caseId: c.id, project: nm, date: c.renewalDate, projectId: p.id });
         });
       });
+      // 手动日程事件仅来自日程管理模块，纳入日程提醒
+      DB.events.forEach((e) => {
+        if (within(e.start, win)) out.push({ level: within(e.start, 3) ? '高' : '中', type: '手动日程', kind: 'manual', title: e.title, project: (e.projectId ? ((find(DB.projects, e.projectId) || {}).name || '') : '') || e.title, date: e.start, eventId: e.id, projectId: e.projectId || null });
+      });
+      // 已完成的日程在任务提醒界面消失
+      const live = out.filter((r) => !this.isScheduleDone(r));
+      live.sort((a, b) => new Date(a.date) - new Date(b.date));
+      return live;
+    },
+
+    /* 任务提醒：仅来源于任务截止，不含任何日程项 */
+    taskReminders() {
+      const out = [];
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const within = (isoStr, d) => { if (!isoStr) return false; const x = new Date(isoStr); x.setHours(0, 0, 0, 0); const diff = (x - today) / 86400000; return diff >= 0 && diff <= d; };
       DB.tasks.forEach((t) => {
         if (t.status === '已完成') return;
         if (within(t.dueDate, 3)) out.push({ level: t.status === '待审阅' ? '高' : '中', type: '任务截止', project: (store.getProject(t.projectId) || {}).name || '—', date: t.dueDate, taskId: t.id });
       });
       out.sort((a, b) => new Date(a.date) - new Date(b.date));
       return out;
+    },
+
+    /* 兼容旧调用：合并双通道（用于不需要区分来源的历史入口） */
+    reminders() {
+      const out = this.scheduleReminders().concat(this.taskReminders());
+      out.sort((a, b) => new Date(a.date) - new Date(b.date));
+      return out;
+    },
+
+    /* 判断某条日程提醒是否已"完成"（手动事件看 e.done；项目/案件派生看 doneEvents 集合） */
+    isScheduleDone(r) {
+      if (!r) return false;
+      if (r.eventId) { const e = DB.events.find((x) => x.id === r.eventId); return !!(e && e.done); }
+      const p = find(DB.projects, r.projectId); if (!p) return false;
+      if (r.caseId) { const c = (p.cases || []).find((x) => x.id === r.caseId); return !!(c && c.doneEvents && c.doneEvents.includes(r.kind)); }
+      return !!(p.doneEvents && p.doneEvents.includes(r.kind));
+    },
+    /* 切换日程"完成"状态：完成则自动归档到所属项目"进展"，并写入审计 */
+    setScheduleDone(r, val) {
+      if (!r) return;
+      if (r.eventId) {
+        const e = DB.events.find((x) => x.id === r.eventId); if (!e) return;
+        e.done = val; audit(val ? '完成日程' : '恢复日程', e.title);
+        if (val) this.addProgress(r.projectId, { content: '日程已完成：' + e.title + (e.start ? '（' + e.start.slice(0, 10) + '）' : '') });
+        persist(); return;
+      }
+      const p = find(DB.projects, r.projectId); if (!p) return;
+      let arr = null;
+      if (r.caseId) { const c = (p.cases || []).find((x) => x.id === r.caseId); if (!c) return; c.doneEvents = c.doneEvents || []; arr = c.doneEvents; }
+      else { p.doneEvents = p.doneEvents || []; arr = p.doneEvents; }
+      const i = arr.indexOf(r.kind);
+      if (val && i < 0) arr.push(r.kind);
+      if (!val && i >= 0) arr.splice(i, 1);
+      audit(val ? '完成日程' : '恢复日程', r.project || p.name);
+      if (val) this.addProgress(p.id, { content: '日程已完成：' + (r.project || p.name) + '（' + (r.type || '') + (r.date ? '，' + r.date.slice(0, 10) : '') + '）' });
+      persist();
     },
 
     /* == 统计 == */
@@ -599,8 +657,9 @@
       const parsed = JSON.parse(text);
       if (!parsed.projects) throw new Error('无效的数据文件');
       parsed.clients = parsed.clients || []; parsed.judges = parsed.judges || [];
+      parsed.events = Array.isArray(parsed.events) ? parsed.events : []; parsed.events.forEach((e) => { if (e.done === undefined) e.done = false; });
       const cur = (parsed.meta && parsed.meta.currentUser) || '我';
-      parsed.projects.forEach((p) => { if (!Array.isArray(p.cases)) p.cases = []; migrateNotes(p, cur); migrateFee(p); migrateSeizures(p); migrateCreditors(p); migrateAgent(p); (p.cases || []).forEach((c) => { migrateNotes(c, cur); migrateFee(c); migrateSeizures(c); migrateCreditors(c); migrateAgent(c); }); });
+      parsed.projects.forEach((p) => { if (!Array.isArray(p.cases)) p.cases = []; if (!Array.isArray(p.doneEvents)) p.doneEvents = []; migrateNotes(p, cur); migrateFee(p); migrateSeizures(p); migrateCreditors(p); migrateAgent(p); (p.cases || []).forEach((c) => { migrateNotes(c, cur); migrateFee(c); migrateSeizures(c); migrateCreditors(c); migrateAgent(c); if (!Array.isArray(c.doneEvents)) c.doneEvents = []; }); });
       DB = parsed; persist();
       audit('导入数据', '从备份恢复');
       return true;
@@ -616,8 +675,9 @@
       else if (raw && ('' + raw).charAt(0) === '{') db = JSON.parse(raw); // 旧明文（加密前）迁移
       else db = seed();
       db.clients = db.clients || []; db.judges = db.judges || [];
+      db.events = Array.isArray(db.events) ? db.events : []; db.events.forEach((e) => { if (e.done === undefined) e.done = false; });
       const cur = (db.meta && db.meta.currentUser) || '我';
-      (db.projects || []).forEach((p) => { if (!Array.isArray(p.cases)) p.cases = []; migrateNotes(p, cur); migrateFee(p); migrateSeizures(p); migrateCreditors(p); migrateAgent(p); (p.cases || []).forEach((c) => { migrateNotes(c, cur); migrateFee(c); migrateSeizures(c); migrateCreditors(c); migrateAgent(c); }); });
+      (db.projects || []).forEach((p) => { if (!Array.isArray(p.cases)) p.cases = []; if (!Array.isArray(p.doneEvents)) p.doneEvents = []; migrateNotes(p, cur); migrateFee(p); migrateSeizures(p); migrateCreditors(p); migrateAgent(p); (p.cases || []).forEach((c) => { migrateNotes(c, cur); migrateFee(c); migrateSeizures(c); migrateCreditors(c); migrateAgent(c); if (!Array.isArray(c.doneEvents)) c.doneEvents = []; }); });
       DB = db;
       return DB;
     },

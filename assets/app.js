@@ -51,7 +51,6 @@
     else if (state.view === 'projects') view.innerHTML = viewProjects();
     else     if (state.view === 'personnel') view.innerHTML = viewPersonnel();
     else if (state.view === 'export') view.innerHTML = viewExport();
-    else if (state.view === 'reminders') view.innerHTML = viewReminders();
     bindView();
     $('.view-scroll').scrollTop = 0;
   }
@@ -254,8 +253,8 @@
 
   /* ===================== 工作台（合并：智能汇报 + 任务 + 提醒） ===================== */
   function viewDashboard() {
-    // 任务提醒与任务管理去重：任务截止类提醒已展示在上方任务管理表中，此处仅保留开庭/合同到期/查封到期等事件型提醒
-    const rem = S.reminders().filter((r) => r.type !== '任务截止').slice(0, 6);
+    // 任务提醒卡片：合并任务通道（任务截止）与日程通道（开庭/合同到期/查封到期/手动日程），日程项提示直接在此呈现
+    const rem = S.reminders().slice(0, 6);
     return `
     <div class="dash-cols">
       <section class="panel">
@@ -263,7 +262,7 @@
         ${taskTableHtml(S.listTasks().filter((t) => t.status !== '已完成'))}
       </section>
       <section class="panel">
-        <div class="ph"><h3 class="tt">任务提醒</h3><button class="link" data-act="goto-reminders">查看全部</button></div>
+        <div class="ph"><h3 class="tt">任务提醒</h3></div>
         ${remindersHtml(rem)}
       </section>
     </div>
@@ -321,7 +320,7 @@
 
   function remindersHtml(rem) {
     if (!rem.length) return '<p class="empty">未来 14 天无预警</p>';
-    return `<ul class="rem-list">${rem.map((r) => `<li class="rem rem-${r.level === '高' ? 'hi' : 'mid'}"><span class="rem-type">${r.type}</span><span class="rem-proj" data-act="goto-proj" data-id="${r.projectId || ''}">${esc(r.project)}</span><span class="rem-date">${fmtDate(r.date)} ${rel(r.date)}</span></li>`).join('')}</ul>`;
+    return `<ul class="rem-list">${rem.map((r) => `<li class="rem rem-${r.level === '高' ? 'hi' : 'mid'}"><span class="rem-type">${r.type}</span><span class="rem-proj" data-act="goto-proj" data-id="${r.projectId || ''}">${r.title ? esc(r.title) + (r.project && r.project !== r.title ? ' <i class="rem-projtag">@' + esc(r.project) + '</i>' : '') : esc(r.project)}</span><span class="rem-date">${fmtDate(r.date)} ${rel(r.date)}</span>${r.type !== '任务截止' ? `<button class="rem-done" type="button" data-act="evt-done" data-kind="${r.kind || ''}" data-ref="${r.projectId || ''}" data-case="${r.caseId || ''}" data-evt="${r.eventId || ''}" title="标记完成 / 取消" aria-label="标记完成">✓</button>` : ''}</li>`).join('')}</ul>`;
   }
 
   /* ===================== 日程管理（周/月 + 冲突检测） ===================== */
@@ -340,6 +339,15 @@
     ${conflicts.length ? `<div class="conflict-banner">⚠ 检测到 ${conflicts.length} 处日程冲突：${conflicts.map((c) => esc(c.aTitle) + ' × ' + esc(c.bTitle)).join('；')}</div>` : ''}
     <div class="cal-body">${body}</div>`;
   }
+  function evtChip(e, conf, small) {
+    const doneCls = e.done ? ' done' : '';
+    const confCls = conf ? ' conf' : '';
+    const smCls = small ? ' sm' : '';
+    const time = e.allDay ? '' : `<span class="evt-t">${String(new Date(e.start).getHours()).padStart(2, '0')}:${String(new Date(e.start).getMinutes()).padStart(2, '0')}</span>`;
+    const projTag = (e.kind === 'manual' && e.projectId) ? (() => { const p = S.getProject(e.projectId); return p ? ` <span class="evt-proj">@${esc(p.name)}</span>` : ''; })() : '';
+    const doneBtn = `<button class="evt-done" type="button" data-act="evt-done" data-kind="${e.kind}" data-ref="${e.refId || ''}" data-case="${e.caseId || ''}" data-evt="${e.kind === 'manual' ? e.id : ''}" title="标记完成 / 取消" aria-label="标记完成">✓</button>`;
+    return `<div class="evt evt-${e.kind}${doneCls}${confCls}${smCls}" data-act="evt-open" data-id="${e.id}" data-kind="${e.kind}" data-ref="${e.refId || ''}">${time}${esc(e.title)}${projTag}${doneBtn}</div>`;
+  }
   function startOfWeek(d) { const x = new Date(d); const day = (x.getDay() + 6) % 7; x.setDate(x.getDate() - day); x.setHours(0, 0, 0, 0); return x; }
   function weekView(ref, evts, conflicts) {
     const start = startOfWeek(ref);
@@ -356,9 +364,9 @@
       const timed = dayEvents.filter((e) => !e.allDay);
       let cells = hours.map((h) => {
         const items = timed.filter((e) => Math.floor(new Date(e.start).getHours() / 2) * 2 === h);
-        return `<div class="wk-cell">${items.map((e) => `<div class="evt evt-${e.kind} ${isConf(e, conflicts) ? 'conf' : ''}" data-act="evt-open" data-id="${e.id}" data-kind="${e.kind}" data-ref="${e.refId || ''}"><span class="evt-t">${String(new Date(e.start).getHours()).padStart(2, '0')}:${String(new Date(e.start).getMinutes()).padStart(2, '0')}</span>${esc(e.title)}</div>`).join('')}</div>`;
+        return `<div class="wk-cell">${items.map((e) => evtChip(e, isConf(e, conflicts), false)).join('')}</div>`;
       }).join('');
-      grid += `<div class="wk-col"><div class="wk-allday">${allDay.map((e) => `<div class="evt evt-${e.kind}" data-act="evt-open" data-id="${e.id}" data-kind="${e.kind}" data-ref="${e.refId || ''}">${esc(e.title)}</div>`).join('')}</div><div class="wk-hours">${cells}</div></div>`;
+      grid += `<div class="wk-col"><div class="wk-allday">${allDay.map((e) => evtChip(e, false, false)).join('')}</div><div class="wk-hours">${cells}</div></div>`;
     });
     return { html: `<div class="wk-head-row"><div class="wk-corner"></div>${head}</div><div class="wk-scroll"><div class="wk-times"><div class="wk-spad"></div>${hours.map((h) => `<div class="wk-time">${String(h).padStart(2, '0')}:00</div>`).join('')}</div><div class="wk-grid">${grid}</div></div><div class="wk-legend">图例：<span class="lg"><i class="lg-task"></i>任务</span><span class="lg"><i class="lg-hearing"></i>开庭</span><span class="lg"><i class="lg-contract"></i>合同到期</span><span class="lg"><i class="lg-renewal"></i>续费</span><span class="lg"><i class="lg-manual"></i>手动日程</span>${conflicts.length ? '<span class="lg"><i class="lg-conf"></i>冲突</span>' : ''}</div>`, label };
   }
@@ -372,7 +380,7 @@
       const d = new Date(start); d.setDate(d.getDate() + i);
       const inMonth = d.getMonth() === m; const today = new Date(); today.setHours(0, 0, 0, 0); const isT = d.getTime() === today.getTime();
       const dayEvents = evts.filter((e) => new Date(e.start).toDateString() === d.toDateString());
-      cells += `<div class="mc ${inMonth ? '' : 'out'} ${isT ? 'istoday' : ''}"><div class="mc-d">${d.getDate()}</div>${dayEvents.slice(0, 3).map((e) => `<div class="evt evt-${e.kind} sm" data-act="evt-open" data-id="${e.id}" data-kind="${e.kind}" data-ref="${e.refId || ''}">${esc(e.title)}</div>`).join('')}${dayEvents.length > 3 ? '<div class="mc-more">+' + (dayEvents.length - 3) + '</div>' : ''}</div>`;
+      cells += `<div class="mc ${inMonth ? '' : 'out'} ${isT ? 'istoday' : ''}"><div class="mc-d">${d.getDate()}</div>${dayEvents.slice(0, 3).map((e) => evtChip(e, false, true)).join('')}${dayEvents.length > 3 ? '<div class="mc-more">+' + (dayEvents.length - 3) + '</div>' : ''}</div>`;
     }
     return { html: `<div class="mc-grid">${cells}</div>`, label };
   }
@@ -690,18 +698,6 @@
     bindSeizureEditor(); bindCreditorEditor();
   }
 
-  /* ===================== 智能提醒（独立视图） ===================== */
-  function viewReminders() {
-    const rem = S.reminders();
-    const g = { '高': rem.filter((r) => r.level === '高'), '中': rem.filter((r) => r.level === '中') };
-    if (!rem.length) return `<div class="panel"><div class="empty"><p>未来 14 天暂无预警，安心推进在手事项。</p></div></div>`;
-    return `<div class="toolbar"><span class="hint">基于开庭、合同到期、查封到期与任务截止自动生成，覆盖未来 14 天。</span></div>
-    <div class="rem-grid">
-      <section class="panel"><h3 class="tt">🔴 高优先预警（${g['高'].length}）</h3>${g['高'].length ? '<ul class="rem-list">' + g['高'].map((r) => `<li class="rem rem-hi"><span class="rem-type">${r.type}</span><span class="rem-proj" data-act="goto-proj" data-id="${r.projectId || ''}">${esc(r.project)}</span><span class="rem-date">${fmtDate(r.date)} ${rel(r.date)}</span></li>`).join('') + '</ul>' : '<p class="empty">无</p>'}</section>
-      <section class="panel"><h3 class="tt">🟠 中优先提醒（${g['中'].length}）</h3>${g['中'].length ? '<ul class="rem-list">' + g['中'].map((r) => `<li class="rem rem-mid"><span class="rem-type">${r.type}</span><span class="rem-proj" data-act="goto-proj" data-id="${r.projectId || ''}">${esc(r.project)}</span><span class="rem-date">${fmtDate(r.date)} ${rel(r.date)}</span></li>`).join('') + '</ul>' : '<p class="empty">无</p>'}</section>
-    </div>`;
-  }
-
   /* ===================== 人员管理（拆分为「对接人」与「经办法官」两个独立区域） ===================== */
   function viewPersonnel() {
     const cls = S.listClients();
@@ -891,7 +887,6 @@
   /* ===================== 事件 ===================== */
   function onAct(act, id, el) {
     switch (act) {
-      case 'goto-reminders': navigate('reminders'); break;
       case 'goto-proj': if (id) { state.projOpenId = id; navigate('projects'); } break;
       case 'task-new': bindTaskForm(null); break;
       case 'task-edit': bindTaskForm(id); break;
@@ -917,8 +912,9 @@
       case 'case-editprog': { const o = S.getCase(el.dataset.pid, el.dataset.cid); const x = o && o.progress[parseInt(el.dataset.idx, 10)]; if (x) openProgressEditor('编辑案件进展', x, (note) => { S.updateCaseProgress(el.dataset.pid, el.dataset.cid, parseInt(el.dataset.idx, 10), note); render(); }); break; }
       case 'case-delprog': confirmModal('确认删除该案件进展？删除后不可恢复。', () => { S.deleteCaseProgress(el.dataset.pid, el.dataset.cid, parseInt(el.dataset.idx, 10)); render(); }); break;
       case 'case-delnote': confirmModal('确认删除该案件备注？', () => { S.deleteCaseNote(el.dataset.pid, el.dataset.cid, parseInt(el.dataset.doc, 10)); render(); }); break;
-      case 'evt-new': openModal('新建日程', field('title', '标题', 'text', '') + field('start', '开始时间', 'datetime', '') + field('end', '结束时间', 'datetime', ''), (v) => { S.saveManualEvent({ title: v.title, start: v.start ? new Date(v.start).toISOString() : new Date().toISOString(), end: v.end ? new Date(v.end).toISOString() : null, projectId: null }, true); closeModal(); render(); }); break;
+      case 'evt-new': openModal('新建日程', field('title', '标题', 'text', '') + fieldCombo('project', '所属项目', '', S.listProjects().map((p) => p.name)) + field('start', '开始时间', 'datetime', '') + field('end', '结束时间', 'datetime', ''), (v) => { const proj = v.project ? S.listProjects().find((p) => p.name === v.project) : null; S.saveManualEvent({ title: v.title, start: v.start ? new Date(v.start).toISOString() : new Date().toISOString(), end: v.end ? new Date(v.end).toISOString() : null, projectId: proj ? proj.id : null }, true); closeModal(); render(); }); break;
       case 'evt-open': { const k = el.dataset.kind, ref = el.dataset.ref; if ((k === 'task') && ref) { const t = S.getTask(ref); if (t) openModal('任务', `<div class="detail"><div class="dl"><div><b>任务</b>${esc(t.title)}</div><div><b>优先级</b>${t.priority}</div><div><b>截止</b>${fmtDT(t.dueDate)}</div><div><b>状态</b>${t.status}</div></div></div>`, null, { readonly: true }); } else if ((k === 'hearing' || k === 'contract' || k === 'renewal') && ref) { state.projOpenId = ref; navigate('projects'); } break; }
+      case 'evt-done': { const r = { eventId: el.dataset.evt || null, projectId: el.dataset.ref, caseId: el.dataset.case || null, kind: el.dataset.kind }; S.setScheduleDone(r, !S.isScheduleDone(r)); render(); break; }
       case 'cal-prev': state.calDate = shift(state.calDate, state.calMode === 'week' ? -7 : -1); render(); break;
       case 'cal-next': state.calDate = shift(state.calDate, state.calMode === 'week' ? 7 : 1); render(); break;
       case 'cal-today': state.calDate = new Date(); render(); break;

@@ -339,7 +339,15 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: var(--fw-bold); col
 .evt-renewal { background: oklch(57% 0.048 350 / .12); border-color: var(--c-aud); }
 .evt-manual { background: oklch(56% 0.070 155 / .12); border-color: var(--ok); }
 .evt.conf { outline: 2px solid var(--bad); }
-.evt-t { font-weight: 800; margin-right: 3px; }
+  .evt-t { font-weight: 800; margin-right: 3px; }
+  /* 已完成的日程：浅灰 / 灰化 */
+  .evt.done { background: var(--surface-2); border-left-color: var(--line) !important; opacity: .55; filter: grayscale(1); text-decoration: line-through; }
+  /* 日程"完成"开关 */
+  .evt-done { float: right; margin-left: 6px; width: 18px; height: 18px; line-height: 16px; padding: 0; border-radius: 50%; border: 1px solid var(--line-2); background: var(--surface); color: var(--sub); font-size: 12px; cursor: pointer; flex-shrink: 0; }
+  .evt-done:hover { border-color: var(--ok); color: var(--ok); }
+  .evt.done .evt-done { background: var(--ok); border-color: var(--ok); color: #fff; }
+  .evt-proj { font-size: var(--fs-sm); color: var(--prim); opacity: .8; font-weight: 500; }
+  .evt.done .evt-proj { opacity: .4; }
 .wk-legend { padding: 10px 14px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; border-top: 1px solid var(--line); background: var(--surface-2); font-size: var(--fs-sm); color: var(--ink-2); }
 .wk-legend .lg { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .wk-legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; flex-shrink: 0; }
@@ -355,13 +363,16 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: var(--fw-bold); col
 /* ============ 智能提醒 ============ */
 .rem-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .rem-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.rem { display: grid; grid-template-columns: 96px 1fr auto; gap: 10px; align-items: center; padding: 12px 16px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--mc); transition: background .18s ease-out, border-color .18s ease-out; }
+.rem { display: grid; grid-template-columns: 96px 1fr auto auto; gap: 10px; align-items: center; padding: 12px 16px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--mc); transition: background .18s ease-out, border-color .18s ease-out; }
 .rem-hi { border-left-color: var(--bad); background: oklch(55% 0.105 25 / .06); }
 .rem-mid { border-left-color: var(--warn); }
 .rem-type { font-size: var(--fs-xs); color: var(--sub); }
 .rem-proj { font-weight: var(--fw-semibold); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rem-proj:hover { color: var(--prim); }
+.rem-projtag { font-style: normal; font-weight: var(--fw-normal); color: var(--prim); font-size: var(--fs-sm); opacity: .85; }
 .rem-date { font-size: var(--fs-xs); color: var(--sub); white-space: nowrap; }
+  .rem-done { width: 18px; height: 18px; line-height: 16px; padding: 0; border-radius: 50%; border: 1px solid var(--line-2); background: var(--surface); color: var(--sub); font-size: 12px; cursor: pointer; align-self: center; flex-shrink: 0; }
+  .rem-done:hover { border-color: var(--ok); color: var(--ok); }
 .rem:hover { background: var(--surface-2); }
 .rel { font-size: var(--fs-xs); margin-left: 4px; }
 .rel.today { color: var(--mc); } .rel.soon { color: var(--warn); } .rel.overdue { color: var(--bad); }
