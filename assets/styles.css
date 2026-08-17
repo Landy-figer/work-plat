@@ -522,6 +522,41 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: var(--fw-bold); col
   .cr-holder-head { grid-template-columns: minmax(0, 1fr) 40px; }
 }
 
+/* ===================== 空状态增强（更友好的空状态视觉） ===================== */
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: var(--space-2xl) var(--space-lg);
+  color: var(--muted); text-align: center;
+  gap: var(--space-sm);
+}
+.empty-state .es-icon { font-size: 2.2rem; opacity: .45; }
+.empty-state p { margin: 0; font-size: var(--fs-sm); line-height: var(--lh-base); }
+.empty-state .es-hint { font-size: var(--fs-xs); color: var(--sub); }
+
+/* ===================== 焦点可访问性（键盘导航） ===================== */
+:focus-visible {
+  outline: 2px solid var(--mc);
+  outline-offset: 2px;
+}
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--mc);
+  outline-offset: 2px;
+}
+
+/* ===================== 表格行交互增强 ===================== */
+.tbl tbody tr { transition: background .15s ease-out; }
+
+/* ===================== 任务/提醒 完成状态 badge ===================== */
+.badge-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; padding: 0 5px;
+  background: var(--bad); color: #fff;
+  border-radius: var(--radius-pill); font-size: 11px; font-weight: var(--fw-bold);
+  line-height: 1; margin-left: 6px; vertical-align: middle;
+}
+.badge-count.ok { background: var(--ok); }
+.badge-count.warn { background: var(--warn); }
+
 /* ===================== 密码锁屏（vault） ===================== */
 .vault-lock {
   position: fixed; inset: 0; z-index: 9999;

@@ -49,7 +49,7 @@
     if (state.view === 'dashboard') view.innerHTML = viewDashboard();
     else if (state.view === 'calendar') view.innerHTML = viewCalendar();
     else if (state.view === 'projects') view.innerHTML = viewProjects();
-    else     if (state.view === 'personnel') view.innerHTML = viewPersonnel();
+    else if (state.view === 'personnel') view.innerHTML = viewPersonnel();
     else if (state.view === 'export') view.innerHTML = viewExport();
     bindView();
     $('.view-scroll').scrollTop = 0;
@@ -300,7 +300,7 @@
     const list = tasks.slice(); // 直接按 DB 数组顺序（拖拽排序即持久化顺序），不再按状态/截止自动排序
     const cards = list.map((t) => {
       const isDone = t.status === '已完成';
-      return `<li class="card-pill is-task pri-${PRIORITY_CLASS(t.priority)}${isDone ? ' row-done' : ''}" data-act="task-open" data-id="${t.id}">
+      return `<li class="card-pill is-task pri-${priorityClass(t.priority)}${isDone ? ' row-done' : ''}" data-act="task-open" data-id="${t.id}">
         <span class="drag-handle" data-drag-handle title="拖拽排序">⠿</span>
         <label class="chk"><input type="checkbox" data-act="task-toggle" data-id="${t.id}" ${(t.status === '已完成' || t.status === '待审阅') ? 'checked' : ''}><span></span></label>
         <div class="card-pill-main">
@@ -316,7 +316,7 @@
     }).join('');
     return cards ? `<ul class="card-list">${cards}</ul>` : `<div class="empty"><p>暂无任务</p></div>`;
   }
-  function PRIORITY_CLASS(p) { return p === '高' ? 'high' : (p === '中' ? 'mid' : 'low'); }
+  function priorityClass(p) { return p === '高' ? 'high' : (p === '中' ? 'mid' : 'low'); }
 
   function remindersHtml(rem) {
     if (!rem.length) return '<p class="empty">未来 14 天无预警</p>';
@@ -384,14 +384,25 @@
     }
     return { html: `<div class="mc-grid">${cells}</div>`, label };
   }
+  /* detectConflicts：O(n log n) — 先按开始时间排序，再用滑动窗口（同天、时间段重叠）逐对比对
+   * 相比原来 O(n²) 全量两两比对，当事件数较多时性能显著提升；正确性不变（排序后仍覆盖所有冲突对）。 */
   function detectConflicts(evts) {
-    const out = []; const timed = evts.filter((e) => !e.allDay && e.start);
-    for (let i = 0; i < timed.length; i++) for (let j = i + 1; j < timed.length; j++) {
-      const a = timed[i], b = timed[j];
-      if (new Date(a.start).toDateString() !== new Date(b.start).toDateString()) continue;
-      const as = new Date(a.start), ae = a.end ? new Date(a.end) : new Date(as.getTime() + 3600000);
-      const bs = new Date(b.start), be = b.end ? new Date(b.end) : new Date(bs.getTime() + 3600000);
-      if (as < be && bs < ae) out.push({ a: a.id, b: b.id, aTitle: a.title, bTitle: b.title });
+    const out = [];
+    const timed = evts.filter((e) => !e.allDay && e.start)
+      .sort((a, b) => new Date(a.start) - new Date(b.start)); // 排序：O(n log n)
+    for (let i = 0; i < timed.length; i++) {
+      const a = timed[i];
+      const as = new Date(a.start);
+      const ae = a.end ? new Date(a.end) : new Date(as.getTime() + 3600000);
+      for (let j = i + 1; j < timed.length; j++) {
+        const b = timed[j];
+        const bs = new Date(b.start);
+        // 排序后 b 的开始 >= a 的开始；若 b 的开始 >= a 的结束，则之后所有事件均不会与 a 冲突（剪枝）
+        if (bs >= ae) break;
+        if (as.toDateString() !== bs.toDateString()) continue; // 仅同天冲突
+        const be = b.end ? new Date(b.end) : new Date(bs.getTime() + 3600000);
+        if (as < be && bs < ae) out.push({ a: a.id, b: b.id, aTitle: a.title, bTitle: b.title });
+      }
     }
     return out;
   }
@@ -570,34 +581,43 @@
     const progSec = `<div class="form-sec"><div class="kv-sec">进展状态（本次新增，留空忽略）</div><div class="form-grid">${field('progressNote', '本次进展', 'textarea', '', { wide: true, rows: 2 })}</div></div>`;
     return secs + notesSec + progSec;
   }
+  /* 从表单值 v 收集实体字段，共享于项目表单 / 案件表单，避免重复约 60 行逻辑
+   * base    — 编辑时的原始对象（新建传 {}）
+   * v       — collectForm() 结果
+   * returns — 处理好的 data 对象（不含 id/createdAt 等生命周期字段） */
+  function collectEntityData(v, base) {
+    const cat = v.category || '其他类';
+    const tpl = PROJ_CATEGORY_TEMPLATES[cat] || PROJ_CATEGORY_TEMPLATES['其他类'];
+    const allFields = PROJ_GENERIC_MODULES.concat(tpl.modules).reduce((a, m) => a.concat(m.fields), []);
+    const data = {};
+    allFields.forEach((f) => {
+      let val = v[f.key];
+      if (f.type === 'date' || f.type === 'datetime') val = val ? new Date(val).toISOString() : null;
+      else val = (val == null ? '' : val);
+      data[f.key] = val;
+    });
+    // 查封与保全：从多项编辑器收集，并按最早查封截止日自动回填「查封到期提醒日」（提前 30 天，便于办理续封）
+    data.seizures = collectSeizureItems();
+    if (data.seizures.length) {
+      const ends = data.seizures.map((s) => s.end).filter(Boolean).sort();
+      if (ends.length) { const lead = szAddMonths(ends[0], -30); if (lead) data.renewalDate = new Date(lead + 'T00:00:00.000Z').toISOString(); }
+    }
+    // 破产要素：仅当类别为破产类时从编辑器收集多项债权持有人；否则保留既有数据
+    data.creditors = (cat === '破产类') ? collectCreditorItems() : (base && base.creditors ? base.creditors.slice() : []);
+    data.tags = v.tags ? v.tags.split(/[,，]/).map((s) => s.trim()).filter(Boolean) : (base ? base.tags : []);
+    data.notes = (base && base.notes) ? base.notes.slice() : [];
+    data.progress = (base && base.progress) ? base.progress.slice() : [];
+    return data;
+  }
+
   function openProjForm(id, draft) {
     const base = id ? S.getProject(id) : {};
     const p = Object.assign({}, base, draft || {});
     if (!p.category) p.category = '其他类';
     const cat = p.category;
     openModal(id ? '编辑项目（' + cat + '）' : '新建项目（登记台账）', projForm(p), (v) => {
-      const c = v.category || '其他类';
-      const tpl = PROJ_CATEGORY_TEMPLATES[c] || PROJ_CATEGORY_TEMPLATES['其他类'];
-      const allFields = PROJ_GENERIC_MODULES.concat(tpl.modules).reduce((a, m) => a.concat(m.fields), []);
-      const data = {};
-      allFields.forEach((f) => {
-        let val = v[f.key];
-        if (f.type === 'date' || f.type === 'datetime') val = val ? new Date(val).toISOString() : null;
-        else val = (val == null ? '' : val);
-        data[f.key] = val;
-      });
-      // 查封与保全：从多项编辑器收集，并按最早查封截止日自动回填「查封到期提醒日」（提前 30 天，便于办理续封）
-      data.seizures = collectSeizureItems();
-      if (data.seizures.length) {
-        const ends = data.seizures.map((s) => s.end).filter(Boolean).sort();
-        if (ends.length) { const lead = szAddMonths(ends[0], -30); if (lead) data.renewalDate = new Date(lead + 'T00:00:00.000Z').toISOString(); }
-      }
-      // 破产要素：仅当类别为破产类时从编辑器收集多项债权持有人；否则保留既有数据
-      data.creditors = (c === '破产类') ? collectCreditorItems() : (base && base.creditors ? base.creditors.slice() : []);
+      const data = collectEntityData(v, base);
       data.name = data.name || (base && base.name) || '未命名项目';
-      data.tags = v.tags ? v.tags.split(/[,，]/).map((s) => s.trim()).filter(Boolean) : (base ? base.tags : []);
-      data.notes = (base && base.notes) ? base.notes.slice() : [];
-      data.progress = (base && base.progress) ? base.progress.slice() : [];
       data.cases = (base && base.cases) ? base.cases.slice() : [];
       if (id) { data.id = id; S.saveProject(data, false); }
       else { S.saveProject(data, true); }
@@ -664,28 +684,8 @@
     if (!c.category) c.category = p.category || '其他类';
     const cat = c.category;
     openModal(caseId ? '编辑关联案件（' + cat + '）' : '新建关联案件（' + cat + '）', caseForm(c), (v) => {
-      const cc = v.category || '其他类';
-      const tpl = PROJ_CATEGORY_TEMPLATES[cc] || PROJ_CATEGORY_TEMPLATES['其他类'];
-      const allFields = PROJ_GENERIC_MODULES.concat(tpl.modules).reduce((a, m) => a.concat(m.fields), []);
-      const data = {};
-      allFields.forEach((f) => {
-        let val = v[f.key];
-        if (f.type === 'date' || f.type === 'datetime') val = val ? new Date(val).toISOString() : null;
-        else val = (val == null ? '' : val);
-        data[f.key] = val;
-      });
-      // 查封与保全：从多项编辑器收集，并按最早查封截止日自动回填「查封到期提醒日」（提前 30 天，便于办理续封）
-      data.seizures = collectSeizureItems();
-      if (data.seizures.length) {
-        const ends = data.seizures.map((s) => s.end).filter(Boolean).sort();
-        if (ends.length) { const lead = szAddMonths(ends[0], -30); if (lead) data.renewalDate = new Date(lead + 'T00:00:00.000Z').toISOString(); }
-      }
-      // 破产要素：仅当类别为破产类时从编辑器收集多项债权持有人；否则保留既有数据
-      data.creditors = (cc === '破产类') ? collectCreditorItems() : (base && base.creditors ? base.creditors.slice() : []);
+      const data = collectEntityData(v, base);
       data.name = data.name || (base && base.name) || '未命名案件';
-      data.tags = v.tags ? v.tags.split(/[,，]/).map((s) => s.trim()).filter(Boolean) : (base ? base.tags : []);
-      data.notes = (base && base.notes) ? base.notes.slice() : [];
-      data.progress = (base && base.progress) ? base.progress.slice() : [];
       if (caseId) { data.id = caseId; S.saveCase(projectId, data, false); }
       else { S.saveCase(projectId, data, true); }
       const cid = caseId || data.id;
@@ -1098,6 +1098,25 @@
 
   LB.onSync = () => { if (state.view) render(); };
 
+  /* ===================== 空闲自动锁定（安全层：保险库启用时，30 分钟无交互自动重载锁屏） =====================
+   * 仅在 vault 启用且已解锁时生效；用户任意交互（click/keydown/scroll）重置倒计时。
+   * 重载页面比主动调用 lock() 更彻底：确保内存中的明文密钥被清除。 */
+  (function setupIdleLock() {
+    const IDLE_MS = 30 * 60 * 1000; // 30 分钟
+    let idleTimer = null;
+    function resetIdleTimer() {
+      if (!(LB.vault && LB.vault.enabled && LB.vault.isUnlocked())) return;
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        if (LB.vault && LB.vault.lock) LB.vault.lock();
+        location.reload();
+      }, IDLE_MS);
+    }
+    ['click', 'keydown', 'scroll', 'touchstart', 'mousemove'].forEach((ev) => {
+      document.addEventListener(ev, resetIdleTimer, { passive: true, capture: true });
+    });
+  })();
+
   /* ===================== 启动 ===================== */
   function buildShell() {
     const V = LB.vault;
@@ -1125,7 +1144,8 @@
           <input id="vault-pw" type="password" class="vault-input" placeholder="访问密码" autocomplete="off" />
           <div id="vault-err" class="vault-err"></div>
           <button id="vault-go" class="btn primary vault-btn">解锁</button>
-          <p class="vault-hint">数据在本地以密码加密存储；忘记密码将无法恢复。</p>
+          <p class="vault-hint">数据在本地以 AES-GCM 256 位密码加密存储；忘记密码将无法恢复。</p>
+          <p class="vault-hint" style="margin-top:6px;font-size:11px;color:var(--muted)">⏱ 30 分钟无操作将自动锁屏</p>
         </div>
       </div>`;
     const go = async () => {
