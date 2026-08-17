@@ -62,12 +62,16 @@ function localSave(db) { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.writeFi
 const PAGES_DATA = path.join(ROOT, 'data', 'workplat.enc.json');
 let _mirrorBusy = false;
 let _mirrorPending = null;
-// 带重试的 git 命令（应对 GitHub 网络偶发超时）；commit 的「无变化」是确定性结果，不重试
+// 推送自愈最大尝试次数（含首次）。达到上限后优雅放弃，绝不无限重试。
+const MIRROR_MAX_ATTEMPTS = 3;
+// 带重试上限的 git 命令（应对 GitHub 网络偶发超时）。
+// retries 为「额外重试次数」：retries<=0 表示不重试；命令无论成败都只回调一次。
 function gitRun(args, timeoutMs, retries, cb) {
   const tryOnce = (attempt) => {
     exec('git ' + args, { cwd: ROOT, timeout: timeoutMs }, (e) => {
-      if (!e || retries <= 0) return cb(e);
-      console.error('[pages mirror] git ' + args.split(' ')[0] + ' 失败，重试(' + (attempt + 1) + ')');
+      if (!e || retries <= 0) return cb(e);              // 成功，或已无重试额度
+      if (attempt >= retries) return cb(e);              // 已达重试上限，放弃（关键：避免无限重试）
+      console.error('[pages mirror] git ' + args.split(' ')[0] + ' 失败，重试(' + (attempt + 1) + '/' + retries + ')');
       setTimeout(() => tryOnce(attempt + 1), 1500);
     });
   };
@@ -77,23 +81,49 @@ function mirrorToPages(sealed) {
   if (typeof sealed !== 'string' || sealed.indexOf('v1:') !== 0) return;
   if (_mirrorBusy) { _mirrorPending = sealed; return; }
   _mirrorBusy = true;
-  const run = (payload) => {
+  const finish = () => {
+    _mirrorBusy = false;
+    if (_mirrorPending) { const n = _mirrorPending; _mirrorPending = null; mirrorToPages(n); }
+  };
+  const writeAndPush = (payload, attempt) => {
     try {
       fs.mkdirSync(path.dirname(PAGES_DATA), { recursive: true });
       fs.writeFileSync(PAGES_DATA, payload);
-    } catch (e) { console.error('[pages mirror] write', e.message); _mirrorBusy = false; return; }
-    gitRun('pull --rebase -q origin main', 15000, 2, () => {
-      gitRun('add data/workplat.enc.json', 5000, 0, () => {
-        gitRun('commit -q -m "mirror: 加密数据同步到线上"', 5000, 0, (e3) => {
-          if (e3) console.error('[pages mirror] commit (可能无变化)', e3.message);
-          gitRun('push -q origin main', 30000, 3, (e4) => {
-            if (e4) console.error('[pages mirror] push', e4.message);
-            else console.log('[pages mirror] pushed encrypted data ->', new Date().toISOString());
-            _mirrorBusy = false;
-            if (_mirrorPending && _mirrorPending !== payload) { const n = _mirrorPending; _mirrorPending = null; mirrorToPages(n); }
-          });
+    } catch (e) { console.error('[pages mirror] write', e.message); finish(); return; }
+    gitRun('add data/workplat.enc.json', 5000, 0, () => {
+      gitRun('commit -q -m "mirror: 加密数据同步到线上"', 5000, 0, (e3) => {
+        if (e3) console.error('[pages mirror] commit (可能无变化)', e3.message);
+        gitRun('push -q origin main', 30000, 0, (e4) => {
+          if (e4) {
+            console.error('[pages mirror] push 失败：', e4.message);
+            if (attempt < MIRROR_MAX_ATTEMPTS - 1) {
+              console.error('[pages mirror] 自愈：fetch + reset --hard origin/main 后重试(' + (attempt + 1) + ')');
+              gitRun('fetch origin -q', 15000, 0, () => {
+                gitRun('reset --hard origin/main', 10000, 0, () => { writeAndPush(payload, attempt + 1); });
+              });
+            } else {
+              console.error('[pages mirror] 已达最大重试次数，放弃本次推送（本地镜像已写入，数据未丢失）');
+              finish();
+            }
+          } else {
+            console.log('[pages mirror] pushed encrypted data ->', new Date().toISOString());
+            finish();
+          }
         });
       });
+    });
+  };
+  const run = (payload) => {
+    gitRun('pull --rebase -q origin main', 15000, 0, (e1) => {
+      if (e1) {
+        // 拉取失败（常见于本地与远端分叉）：自愈为「fetch + 强制对齐 origin/main」，再写文件推送
+        console.error('[pages mirror] pull 失败，自愈：fetch + reset --hard origin/main');
+        gitRun('fetch origin -q', 15000, 0, () => {
+          gitRun('reset --hard origin/main', 10000, 0, () => { writeAndPush(payload, 0); });
+        });
+      } else {
+        writeAndPush(payload, 0);
+      }
     });
   };
   run(sealed);
