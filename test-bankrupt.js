@@ -1,8 +1,8 @@
 /* 回归测试：破产要素多项债权持有人 + 费用字段改名 + 进展编辑/删除
  * 用 Node + localStorage 垫片加载真实 assets/store.js，验证：
- *  1) 种子：破产类项目 creditors 为多项数组，且带头人的债权流转明细
- *  2) 种子：合同信息改用 agentLawyer（无 contractLawyer），案由/主案号在基础信息
- *  3) 进展：deleteProgress / updateProgress 工作（在种子上，早于导入覆盖）
+ *  1) 破产类项目 creditors 为多项数组，且带头人的债权流转明细（自建数据，无种子依赖）
+ *  2) 合同信息改用 agentLawyer（无 contractLawyer），案由/主案号在基础信息
+ *  3) 进展：deleteProgress / updateProgress 工作
  *  4) 迁移：旧 creditor 字符串 → creditors 多项数组
  *  5) 迁移：旧 contractLawyer → agentLawyer
  *  6) 导出：projects 含「代理律师」「债权持有人(多项)」列
@@ -13,7 +13,7 @@ const path = require('path');
 let pass = 0, fail = 0;
 function ok(name, cond) { if (cond) { pass++; console.log('  ✓ ' + name); } else { fail++; console.log('  ✗ ' + name); } }
 
-// —— 垫片（不预载导入台账，强制走种子）——
+// —— 垫片（store 已无种子数据，库从空开始）——
 const mem = {};
 global.localStorage = {
   getItem: (k) => (k in mem ? mem[k] : null),
@@ -28,8 +28,8 @@ const storeJs = path.join(__dirname, 'assets', 'store.js');
 require(storeJs);
 const S = global.LB.store;
 
-console.log('\n[1] 种子：破产类多项债权持有人');
-const seedBank = S.listProjects().find((p) => p.category === '破产类');
+console.log('\n[1] 破产类多项债权持有人（自建）');
+const seedBank = S.saveProject({ name: '破产测试项目', category: '破产类', agentLawyer: '《委托代理合同》/我', cause: '债权处置', caseNo: '(2026)粤03破申112号', creditors: [{ id: 'cr1', name: '百高资产管理有限公司', transfers: [{ id: 'tf1', date: '2021-07', from: '某信托有限公司', to: '百高资产管理有限公司', amount: '本金 1.2 亿元', applicant: '百高资产管理有限公司' }] }], progress: [] }, true);
 ok('破产类项目存在', !!seedBank);
 ok('creditors 为数组', Array.isArray(seedBank.creditors));
 ok('creditors 含 ≥1 持有人', seedBank.creditors.length >= 1);
@@ -37,16 +37,16 @@ ok('持有人含 name', seedBank.creditors[0] && typeof seedBank.creditors[0].na
 ok('持有人含 transfers 数组', seedBank.creditors[0] && Array.isArray(seedBank.creditors[0].transfers));
 ok('transfers 含流转记录（原始债权人/金额）', seedBank.creditors[0].transfers.length >= 1 && seedBank.creditors[0].transfers[0].from && seedBank.creditors[0].transfers[0].amount);
 
-console.log('\n[2] 种子：合同信息字段改名');
+console.log('\n[2] 合同信息字段改名');
 const seed1 = S.getProject(seedBank.id);
 ok('agentLawyer 为字符串（合同信息）', typeof seed1.agentLawyer === 'string');
 ok('无 contractLawyer 旧键', !('contractLawyer' in seed1));
 ok('基础信息含案由(cause)', 'cause' in seed1);
 ok('基础信息含主案号(caseNo)', 'caseNo' in seed1);
-const seed2 = S.listProjects().find((p) => p.category !== '破产类');
+const seed2 = S.saveProject({ name: '非破产测试项目', category: '诉讼类', progress: [] }, true);
 ok('其余项目也无 contractLawyer 旧键', !('contractLawyer' in seed2));
 
-console.log('\n[3] 进展编辑 / 删除（种子，早于导入覆盖）');
+console.log('\n[3] 进展编辑 / 删除');
 const pid = seedBank.id;
 const before = S.getProject(pid).progress.length;
 S.addProgress(pid, { content: '校验进展编辑/删除' });

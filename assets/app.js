@@ -764,7 +764,7 @@
         <div class="exp-btns"><button class="btn" data-act="exp" data-t="projects">导出案件台账(CSV)</button><button class="btn" data-act="exp" data-t="cases">导出关联案件(CSV)</button><button class="btn" data-act="exp" data-t="tasks">导出任务(CSV)</button><button class="btn" data-act="exp" data-t="clients">导出对接人(CSV)</button><button class="btn" data-act="exp" data-t="judges">导出经办法官(CSV)</button><button class="btn primary" data-act="exp-json">导出全量备份(JSON)</button></div>
         <p class="sync-state">上次同步：${S.meta().lastSync ? fmtDT(S.meta().lastSync) : '—'}</p></section>
       <section class="panel"><h3 class="tt">数据恢复 / 多端同步</h3><p class="hint">导入 JSON 备份以恢复数据；同源多标签页通过 BroadcastChannel 实时同步。</p>
-        <div class="exp-btns"><label class="btn">选择备份文件导入<input type="file" id="imp-file" accept="application/json" hidden></label><button class="btn danger" data-act="reset-demo">恢复示范数据</button></div></section>
+        <div class="exp-btns"><label class="btn">选择备份文件导入<input type="file" id="imp-file" accept="application/json" hidden></label><button class="btn danger" data-act="reset-clear">清空所有数据</button></div></section>
     </div>
 
     <section class="panel" style="max-width:960px">
@@ -936,7 +936,7 @@
       case 'exp-db-health': apiHealth(); break;
       case 'exp': download('WORK-Plat_' + el.dataset.t + '_' + LB.util.todayStr() + '.csv', '﻿' + S.exportCSV(el.dataset.t), 'text/csv;charset=utf-8'); break;
       case 'exp-json': download('WORK-Plat_backup_' + LB.util.todayStr() + '.json', S.exportJSON(), 'application/json'); break;
-      case 'reset-demo': confirmModal('将覆盖当前数据并恢复示范数据，此操作不可撤销，确认？', () => { S.resetDemo(); render(); }, { okText: '恢复示范数据' }); break;
+      case 'reset-clear': confirmModal('将清空当前所有数据且不可撤销，确认？', () => { S.resetDemo(); render(); }, { okText: '清空数据' }); break;
     }
   }
   function shift(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }

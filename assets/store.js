@@ -16,98 +16,8 @@
   const iso = (d) => (d instanceof Date ? d.toISOString() : new Date(d).toISOString());
   const todayStr = () => new Date().toISOString().slice(0, 10);
 
-  /* ---------- 默认（种子）数据 ---------- */
-  function seed() {
-    const t = now();
-    const d = (offsetDays, h, m) => {
-      const x = new Date(t);
-      x.setDate(x.getDate() + offsetDays);
-      if (h != null) { x.setHours(h, m || 0, 0, 0); }
-      return x.toISOString();
-    };
-    const projects = [
-      {
-        id: 'prj_seed1', name: '百高项目债权处置', category: '破产类',
-        agentLawyer: '《委托代理合同》/我',
-        party: '百高资产管理有限公司', caseNo: '(2026)粤03破申112号',
-        opponent: '', handlerContact: '我 13800001111', seizures: [{ type: '不动产', name: '盈基大厦（不动产抵押+股权质押）', start: '2026-04-29', end: '2028-04-28', renewalEnd: '2030-10-29' }],
-        contractName: '综合法律服务合同', contractNo: 'HT-2026-0102', cause: '债权处置/破产重整', signDate: '2026-01-08',
-        fee: '前期固定 80万 / 后期按回款 8%', feePayment: '已付首期 40万', feeExtraction: '待回款后提取', transferTime: '2026-06-30', transferAmount: '转付杜总 12万',
-        hearingDate: d(5, 9, 30), contractExpiryDate: d(60), renewalDate: '2028-03-29',
-        tags: ['破产', '债权处置'], status: '进行中',
-        manager: '我', managerContact: '13800001111', contact: '杜总', contactContact: '13900008888',
-        todo: '提前45日寄出续封文件并联系经办核对', handover: '卷宗移交本人，同步电子目录',
-        creditors: [{ id: 'cr_seed1', name: '百高资产管理有限公司', transfers: [{ id: 'tf_seed1', date: '2021-07', from: '某信托有限公司', to: '百高资产管理有限公司', amount: '本金 1.2 亿元', applicant: '百高资产管理有限公司' }] }], debtor: '债务人某实业公司', admin: '盈基清算组', claimAmount: '—', bankruptcyStage: '重整',
-        progress: [
-          { date: '2026-01-12', content: '完成债权尽调，制定处置方案。', author: '我' },
-          { date: '2026-04-29', content: '办理盈基大厦查封，注意到期续封。', author: '我' },
-          { date: '2026-06-30', content: '完成首笔回款并转付杜总。', author: '我' }
-        ],
-        createdAt: d(-120), updatedAt: d(-2)
-      },
-      {
-        id: 'prj_seed2', name: '明月地产建设工程合同审查', category: '其他类',
-        agentLawyer: '《法律顾问合同》/我',
-        party: '明月地产集团', caseNo: '—',
-        opponent: '—', handlerContact: '我 13800003333', seizures: [],
-        contractName: '建设工程施工合同', contractNo: 'HT-2026-0205', cause: '合同审查', signDate: '2026-05-20',
-        fee: '年顾问费 30万', feePayment: '已付', feeExtraction: '—', transferTime: null, transferAmount: null,
-        hearingDate: null, contractExpiryDate: d(20), renewalDate: null,
-        tags: ['非诉', '建设工程'], status: '进行中',
-        manager: '我', managerContact: '13800003333', contact: '陈经理', contactContact: '13900004444',
-        todo: '二次审阅后出具正式审查意见', handover: '—',
-        progress: [
-          { date: '2026-05-22', content: '完成主合同风险审查，反馈12处修改建议。', author: '我' }
-        ],
-        createdAt: d(-80), updatedAt: d(-5)
-      },
-      {
-        id: 'prj_seed3', name: '星河生物劳动仲裁代理', category: '诉讼类',
-        agentLawyer: '《委托代理协议》/我',
-        party: '星河生物股份有限公司', caseNo: '(2026)京0108劳仲0123号',
-        opponent: '前员工李某', handlerContact: '我 13800001111', seizures: [],
-        contractName: '委托代理协议', contractNo: 'HT-2026-0170', cause: '劳动争议', signDate: '2026-02-10',
-        fee: '基础代理费 5万', feePayment: '已付', feeExtraction: '—', transferTime: null, transferAmount: null,
-        hearingDate: d(2, 14, 0), contractExpiryDate: null, renewalDate: d(10),
-        tags: ['仲裁', '劳动法'], status: '进行中',
-        manager: '我', managerContact: '13800001111', contact: '赵主管', contactContact: '13900005555',
-todo: '开庭前完成证据原件核对', handover: '—',
-        court: '北京市海淀区劳动人事争议仲裁委员会', claim: '确认劳动关系并支付经济补偿', stage: '仲裁', limitation: null, evidence: '',
-        progress: [{ date: '2026-02-15', content: '收集劳动关系证据，撰写仲裁申请书。', author: '我' }],
-        doneEvents: [],
-        createdAt: d(-150), updatedAt: d(-1)
-      }
-    ];
-    projects.forEach((p) => { if (!Array.isArray(p.cases)) p.cases = []; if (!Array.isArray(p.notes)) p.notes = []; if (!Array.isArray(p.doneEvents)) p.doneEvents = []; (p.cases || []).forEach((c) => { if (!Array.isArray(c.doneEvents)) c.doneEvents = []; }); });
-    const tasks = [
-      { id: 'tsk_seed1', title: '提交百高项目处置进展报告', dueDate: d(3, 18, 0), projectId: 'prj_seed1', status: '待办', createdAt: d(-4), completedAt: null, history: [{ date: d(-4), from: '—', to: '待办', by: '我' }] },
-      { id: 'tsk_seed2', title: '明月地产合同二次审阅', dueDate: d(8, 18, 0), projectId: 'prj_seed2', status: '待办', createdAt: d(-3), completedAt: null, history: [{ date: d(-3), from: '—', to: '待办', by: '我' }] },
-      { id: 'tsk_seed3', title: '准备星河生物开庭材料', dueDate: d(1, 18, 0), projectId: 'prj_seed3', status: '待审阅', createdAt: d(-6), completedAt: null, history: [{ date: d(-6), from: '—', to: '待办', by: '我' }, { date: d(-2), from: '待办', to: '待审阅', by: '我' }] },
-      { id: 'tsk_seed4', title: '归档百高项目立案卷宗', dueDate: d(-2, 18, 0), projectId: 'prj_seed1', status: '已完成', createdAt: d(-12), completedAt: d(-1), history: [{ date: d(-12), from: '—', to: '待办', by: '我' }, { date: d(-1), from: '待办', to: '已完成', by: '我' }] }
-    ];
-    const clients = [
-      { id: 'cli_seed1', name: '张总', project: '百高项目债权处置', company: '恒泰科技有限公司', contact: '13900002222', address: '深圳市福田区', records: [{ date: '2026-03-12', content: '签约股权转让纠纷代理，确认处置方案。', by: '我' }] },
-      { id: 'cli_seed2', name: '陈经理', project: '明月地产建设工程合同审查', company: '明月地产集团', contact: '13900004444', address: '广州市天河区', records: [{ date: '2026-05-20', content: '建设工程合同审查委托，对接二次审阅。', by: '我' }] },
-      { id: 'cli_seed3', name: '赵主管', project: '星河生物劳动仲裁代理', company: '星河生物股份有限公司', contact: '13900005555', address: '北京市海淀区', records: [{ date: '2026-02-10', content: '劳动仲裁代理委托，对接证据收集。', by: '我' }] }
-    ];
-    const judges = [
-      { id: 'jud_seed1', name: '李法官', case: '百高系列债权处置（重整）', court: '深圳市中级人民法院', contact: '0755-12345678', address: '深圳市福田区', records: [{ date: '2026-04-30', content: '沟通盈基大厦查封续封排期。', by: '我' }] },
-      { id: 'jud_seed2', name: '王法官', case: '星河生物劳动争议仲裁', court: '北京市海淀区劳动人事争议仲裁委员会', contact: '010-87654321', address: '北京市海淀区', records: [{ date: '2026-08-10', content: '确认开庭证据清单提交时限。', by: '我' }] }
-    ];
-    const lawItems = [
-      { id: 'law_seed1', title: '《中华人民共和国民法典》第577条', category: '合同法', content: '当事人一方不履行合同义务或者履行合同义务不符合约定的，应当承担继续履行、采取补救措施或者赔偿损失等违约责任。' },
-      { id: 'law_seed2', title: '《中华人民共和国公司法》第71条', category: '公司法', content: '有限责任公司的股东之间可以相互转让其全部或者部分股权。股东向股东以外的人转让股权，应当经其他股东过半数同意。' },
-      { id: 'law_seed3', title: '《中华人民共和国劳动合同法》第47条', category: '劳动法', content: '经济补偿按劳动者在本单位工作的年限，每满一年支付一个月工资的标准向劳动者支付。六个月以上不满一年的，按一年计算；不满六个月的，向劳动者支付半个月工资的经济补偿。' },
-      { id: 'law_seed4', title: '《中华人民共和国民事诉讼法》第65条', category: '诉讼法', content: '当事人对自己提出的主张应当及时提供证据。人民法院根据当事人的主张和案件审理情况，确定当事人应当提供的证据及其期限。' }
-    ];
-    return {
-      projects, tasks, clients, judges, lawItems, events: [],
-      audit: [{ id: uid('aud'), ts: d(-1), user: '系统', action: '初始化', detail: '载入示范数据' }],
-      meta: { lastSync: null, currentUser: '我' }
-    };
-  }
 
-  /* 保险库锁定时使用的空壳，避免用种子数据覆盖未解密的原文 */
+  /* 保险库锁定时使用的空壳，避免用任何数据覆盖未解密的原文 */
   function emptyDb() {
     return { projects: [], tasks: [], clients: [], judges: [], lawItems: [], events: [], audit: [], meta: { lastSync: null, currentUser: '我' } };
   }
@@ -138,7 +48,7 @@ todo: '开庭前完成证据原件核对', handover: '—',
       }
     } catch (e) { /* ignore */ }
     if (vaultOn) return emptyDb();
-    const s = seed();
+    const s = emptyDb();
     persist(s, true);
     return s;
   }
@@ -664,8 +574,8 @@ todo: '开庭前完成证据原件核对', handover: '—',
       audit('导入数据', '从备份恢复');
       return true;
     },
-    resetDemo() { DB = seed(); persist(); audit('重置', '恢复示范数据'); },
-    /* 解锁后：把缓存的原文（密文 v1: / 旧明文 / 空）还原为 DB 并跑迁移；空则种入示范数据 */
+    resetDemo() { DB = emptyDb(); persist(); audit('重置', '清空数据'); },
+    /* 解锁后：把缓存的原文（密文 v1: / 旧明文 / 空）还原为 DB 并跑迁移；空则建立空库（无种子数据） */
     unsealLoad: async function () {
       const V = LB.vault;
       if (!V || !V.key) return DB;
@@ -673,7 +583,7 @@ todo: '开庭前完成证据原件核对', handover: '—',
       let db;
       if (raw && ('' + raw).indexOf('v1:') === 0) db = await V.unseal(raw);
       else if (raw && ('' + raw).charAt(0) === '{') db = JSON.parse(raw); // 旧明文（加密前）迁移
-      else db = seed();
+      else db = emptyDb();
       db.clients = db.clients || []; db.judges = db.judges || [];
       db.events = Array.isArray(db.events) ? db.events : []; db.events.forEach((e) => { if (e.done === undefined) e.done = false; });
       const cur = (db.meta && db.meta.currentUser) || '我';
