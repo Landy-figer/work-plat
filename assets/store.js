@@ -35,6 +35,7 @@
   function normalizeProjects(projects) {
     (projects || []).forEach((p) => {
       ['cases', 'notes', 'seizures', 'doneEvents'].forEach((k) => { if (!Array.isArray(p[k])) p[k] = []; });
+      if (!Array.isArray(p.customModules)) p.customModules = [];
       (p.cases || []).forEach((c) => {
         ['notes', 'doneEvents'].forEach((k) => { if (!Array.isArray(c[k])) c[k] = []; });
       });

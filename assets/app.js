@@ -375,6 +375,8 @@
     const y = ref.getFullYear(), m = ref.getMonth();
     const first = new Date(y, m, 1); const start = startOfWeek(first);
     const label = y + '年' + (m + 1) + '月';
+    const dowHeader = ['一', '二', '三', '四', '五', '六', '日']
+      .map((d) => `<div class="mc-dow">${d}</div>`).join('');
     let cells = '';
     for (let i = 0; i < 42; i++) {
       const d = new Date(start); d.setDate(d.getDate() + i);
@@ -382,7 +384,7 @@
       const dayEvents = evts.filter((e) => new Date(e.start).toDateString() === d.toDateString());
       cells += `<div class="mc ${inMonth ? '' : 'out'} ${isT ? 'istoday' : ''}"><div class="mc-d">${d.getDate()}</div>${dayEvents.slice(0, 3).map((e) => evtChip(e, false, true)).join('')}${dayEvents.length > 3 ? '<div class="mc-more">+' + (dayEvents.length - 3) + '</div>' : ''}</div>`;
     }
-    return { html: `<div class="mc-grid">${cells}</div>`, label };
+    return { html: `<div class="mc-dow-row">${dowHeader}</div><div class="mc-grid">${cells}</div>`, label };
   }
   /* detectConflicts：O(n log n) — 先按开始时间排序，再用滑动窗口（同天、时间段重叠）逐对比对
    * 相比原来 O(n²) 全量两两比对，当事件数较多时性能显著提升；正确性不变（排序后仍覆盖所有冲突对）。 */
@@ -554,6 +556,52 @@
     <ul class="card-list proj-list">${cards || `<li class="empty"><p>还没有匹配的项目，点击右上角「+ 新建项目」开始登记台账。</p></li>`}</ul>`;
   }
   function kv(label, val) { return `<div class="kv"><span class="kv-k">${label}</span><span class="kv-v">${esc(val) || '—'}</span></div>`; }
+
+  /* 自定义板块渲染：每个板块独立卡片，支持展开/折叠、字段增删 */
+  function customModulesHtml(p) {
+    const cms = p.customModules || [];
+    if (!cms.length) {
+      return `<div class="cm-empty">
+        <span class="cm-empty-hint">暂无自定义板块</span>
+        <button class="mini primary cm-add-sec" data-act="cm-add-sec" data-id="${p.id}">+ 新增板块</button>
+      </div>`;
+    }
+    return cms.map((cm, si) => {
+      const fields = cm.fields || [];
+      const fieldRows = fields.length
+        ? fields.map((f, fi) => `
+          <tr class="cm-field-row">
+            <td class="cm-fname">${esc(f.label)}</td>
+            <td class="cm-fval">${esc(f.value || '—')}</td>
+            <td class="cm-fops">
+              <button class="mini" data-act="cm-edit-field" data-id="${p.id}" data-si="${si}" data-fi="${fi}" title="编辑字段">编辑</button>
+              <button class="mini danger" data-act="cm-del-field" data-id="${p.id}" data-si="${si}" data-fi="${fi}" title="删除字段">删</button>
+            </td>
+          </tr>`).join('')
+        : `<tr><td colspan="3" class="cm-no-fields">暂无字段，点击「+ 字段」添加</td></tr>`;
+      return `
+      <div class="cm-card" data-si="${si}">
+        <div class="cm-card-head">
+          <span class="cm-card-title">${esc(cm.section)}</span>
+          <div class="cm-card-ops">
+            <button class="mini" data-act="cm-rename-sec" data-id="${p.id}" data-si="${si}" title="重命名板块">重命名</button>
+            <button class="mini" data-act="cm-add-field" data-id="${p.id}" data-si="${si}" title="新增字段">+ 字段</button>
+            <button class="mini danger" data-act="cm-del-sec" data-id="${p.id}" data-si="${si}" title="删除整个板块">删除板块</button>
+          </div>
+        </div>
+        <div class="cm-card-body">
+          <table class="cm-tbl">
+            <thead><tr><th class="cm-th-name">字段名</th><th class="cm-th-val">内容</th><th class="cm-th-ops"></th></tr></thead>
+            <tbody>${fieldRows}</tbody>
+          </table>
+        </div>
+      </div>`;
+    }).join('') + `
+      <div class="cm-footer">
+        <button class="mini primary cm-add-sec" data-act="cm-add-sec" data-id="${p.id}">+ 新增板块</button>
+      </div>`;
+  }
+
   function projDetailHtml(p) {
     const tasks = S.listTasks().filter((t) => t.projectId === p.id);
     const mods = projectModules(p);
@@ -571,6 +619,8 @@
       <div class="kv-sec">关联任务</div>
       <ul class="prog">${tasks.map((t) => `<li><span class="prog-d">${fmtDate(t.dueDate)}</span><span class="prog-c">${esc(t.title)}</span><span class="prog-a"><span class="st st-${taskStatusClass(t.status)} st-act" data-act="task-status" data-id="${t.id}">${t.status}</span></span></li>`).join('') || '<li class="empty">暂无任务</li>'}</ul>
       <div class="ph"><button class="mini" data-act="proj-addtask" data-id="${p.id}">+ 任务</button><button class="mini" data-act="proj-addprog" data-id="${p.id}">+ 进展</button><button class="mini" data-act="proj-edit" data-id="${p.id}">编辑</button><button class="mini danger" data-act="proj-del" data-id="${p.id}">删除</button></div>
+      <div class="kv-sec cm-sec-title">自定义板块<span class="cm-sec-hint">可自由新增板块与字段，独立于标准表单之外</span></div>
+      <div class="cm-area">${customModulesHtml(p)}</div>
     </div>`;
   }
   function projForm(p) {
@@ -937,6 +987,117 @@
       case 'exp': download('WORK-Plat_' + el.dataset.t + '_' + LB.util.todayStr() + '.csv', '﻿' + S.exportCSV(el.dataset.t), 'text/csv;charset=utf-8'); break;
       case 'exp-json': download('WORK-Plat_backup_' + LB.util.todayStr() + '.json', S.exportJSON(), 'application/json'); break;
       case 'reset-clear': confirmModal('将清空当前所有数据且不可撤销，确认？', () => { S.resetDemo(); render(); }, { okText: '清空数据' }); break;
+
+      /* ===================== 自定义板块管理 ===================== */
+      case 'cm-add-sec': {
+        /* 新增板块：弹窗输入板块名 */
+        openModal('新增板块', field('secName', '板块名称', 'text', '', { ph: '如：项目进度、风险评估…', wide: true }), (v) => {
+          if (!v.secName || !v.secName.trim()) return;
+          const p = S.getProject(id); if (!p) return;
+          const cms = (p.customModules || []).slice();
+          cms.push({ id: 'cm_' + Date.now(), section: v.secName.trim(), fields: [] });
+          p.customModules = cms;
+          S.saveProject(p, false);
+          closeModal(); render();
+        });
+        break;
+      }
+      case 'cm-rename-sec': {
+        /* 重命名板块 */
+        const si = parseInt(el.dataset.si, 10);
+        const p = S.getProject(id); if (!p) break;
+        const cm = (p.customModules || [])[si]; if (!cm) break;
+        openModal('重命名板块', field('secName', '板块名称', 'text', cm.section, { wide: true }), (v) => {
+          if (!v.secName || !v.secName.trim()) return;
+          const proj = S.getProject(id); if (!proj) return;
+          proj.customModules[si].section = v.secName.trim();
+          S.saveProject(proj, false);
+          closeModal(); render();
+        });
+        break;
+      }
+      case 'cm-del-sec': {
+        /* 删除整个板块（含所有字段），需确认 */
+        const si = parseInt(el.dataset.si, 10);
+        const p = S.getProject(id); if (!p) break;
+        const cm = (p.customModules || [])[si];
+        confirmModal(
+          '确认删除板块「' + (cm ? cm.section : '') + '」及其全部字段？此操作不可撤销。',
+          () => {
+            const proj = S.getProject(id); if (!proj) return;
+            proj.customModules = (proj.customModules || []).filter((_, i) => i !== si);
+            S.saveProject(proj, false);
+            render();
+          },
+          { okText: '删除板块' }
+        );
+        break;
+      }
+      case 'cm-add-field': {
+        /* 新增字段：弹窗输入字段名与初始值 */
+        const si = parseInt(el.dataset.si, 10);
+        openModal(
+          '新增字段',
+          field('fieldLabel', '字段名称', 'text', '', { ph: '如：负责律师、风险等级…', wide: true }) +
+          field('fieldValue', '字段内容', 'textarea', '', { ph: '填写对应值', wide: true, rows: 3 }),
+          (v) => {
+            if (!v.fieldLabel || !v.fieldLabel.trim()) return;
+            const proj = S.getProject(id); if (!proj) return;
+            if (!Array.isArray(proj.customModules) || !proj.customModules[si]) return;
+            proj.customModules[si].fields = (proj.customModules[si].fields || []).concat([
+              { id: 'cf_' + Date.now(), label: v.fieldLabel.trim(), value: v.fieldValue || '' }
+            ]);
+            S.saveProject(proj, false);
+            closeModal(); render();
+          }
+        );
+        break;
+      }
+      case 'cm-edit-field': {
+        /* 编辑字段的名称和内容 */
+        const si = parseInt(el.dataset.si, 10);
+        const fi = parseInt(el.dataset.fi, 10);
+        const p = S.getProject(id); if (!p) break;
+        const f = ((p.customModules || [])[si] || {}).fields;
+        if (!f || !f[fi]) break;
+        const fld = f[fi];
+        openModal(
+          '编辑字段',
+          field('fieldLabel', '字段名称', 'text', fld.label, { wide: true }) +
+          field('fieldValue', '字段内容', 'textarea', fld.value || '', { wide: true, rows: 3 }),
+          (v) => {
+            if (!v.fieldLabel || !v.fieldLabel.trim()) return;
+            const proj = S.getProject(id); if (!proj) return;
+            const mf = (proj.customModules[si] || {}).fields;
+            if (!mf || !mf[fi]) return;
+            mf[fi].label = v.fieldLabel.trim();
+            mf[fi].value = v.fieldValue || '';
+            S.saveProject(proj, false);
+            closeModal(); render();
+          }
+        );
+        break;
+      }
+      case 'cm-del-field': {
+        /* 删除单个字段 */
+        const si = parseInt(el.dataset.si, 10);
+        const fi = parseInt(el.dataset.fi, 10);
+        const p = S.getProject(id); if (!p) break;
+        const fld = (((p.customModules || [])[si] || {}).fields || [])[fi];
+        confirmModal(
+          '确认删除字段「' + (fld ? fld.label : '') + '」？此操作不可撤销。',
+          () => {
+            const proj = S.getProject(id); if (!proj) return;
+            const mf = (proj.customModules[si] || {}).fields;
+            if (!mf) return;
+            proj.customModules[si].fields = mf.filter((_, i) => i !== fi);
+            S.saveProject(proj, false);
+            render();
+          },
+          { okText: '删除字段' }
+        );
+        break;
+      }
     }
   }
   function shift(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
