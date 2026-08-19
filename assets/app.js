@@ -1162,10 +1162,12 @@
       <input class="search" data-act="cli-q" placeholder="检索对接人 / 项目 / 公司 / 联系方式…" value="${esc(state.cliFilter.q)}">
       <button class="btn primary" data-act="cli-new">+ 新建对接人</button>
     </div>
+    <div class="tbl-scroll">
     <div class="card-list-head card-list-head--personnel">
       <span></span><span>姓名</span><span>所属项目</span><span>联系电话</span><span>地址</span><span></span>
     </div>
-    ${cards}`;
+    ${cards}
+    </div>`;
   }
   function viewJudges() {
     const q = (state.judFilter.q || '').toLowerCase();
@@ -1187,10 +1189,12 @@
       <input class="search" data-act="jud-q" placeholder="检索经办人 / 案件 / 法院 / 职务…" value="${esc(state.judFilter.q)}">
       <button class="btn primary" data-act="jud-new">+ 新建经办人</button>
     </div>
+    <div class="tbl-scroll">
     <div class="card-list-head card-list-head--judges">
       <span></span><span>经办人</span><span>职务</span><span>所属案件</span><span>联系方式</span><span>地址</span><span></span>
     </div>
-    ${cards}`;
+    ${cards}
+    </div>`;
   }
   function cliForm(c) { c = c || {}; const projOpts = S.projectCaseOptions().map((o) => o.label); return field('name', '对接人', 'text', c.name) + fieldCombo('project', '所属项目（含子项目）', c.project, projOpts, { wide: true }) + field('company', '所属公司', 'text', c.company) + field('contact', '联系方式', 'text', c.contact) + field('address', '地址', 'text', c.address, { wide: true }); }
   /* 同类别人员重名校验：去空格、忽略大小写；excludeId 用于编辑时排除自身 */
@@ -1860,6 +1864,11 @@
     /* 先用本地数据立即渲染，避免等待远端同步（/api/load 在云同步开启时会阻塞数秒）。
      * 远端同步改为后台进行：拉取成功且更新则二次渲染。 */
     render();
+    /* 支持 ?view=xxx 直达视图（分享/书签/排查定位用） */
+    try {
+      const v = new URLSearchParams(location.search).get('view');
+      if (v && NAV.some((n) => n.id === v)) navigate(v);
+    } catch (e) {}
     remoteHydrate().then((hydrated) => { if (hydrated) render(); }).catch(() => {});
   }
   /* 全屏密码锁：未解锁前不渲染任何数据 */
