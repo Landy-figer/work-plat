@@ -19,8 +19,8 @@
   function rel(iso) { const n = daysLeft(iso); if (n == null) return ''; if (n === 0) return '<span class="rel today">今天</span>'; if (n < 0) return '<span class="rel overdue">逾期' + (-n) + '天</span>'; if (n === 1) return '<span class="rel soon">明天</span>'; return '<span class="rel">剩' + n + '天</span>'; }
 
   const state = {
-    view: 'dashboard', calMode: 'week', calDate: new Date(),
-    projFilter: { q: '', status: '', cause: '', tag: '' }, projOpenId: null, openCases: {}, openCreditors: {},
+    view: 'dashboard', calMode: 'week', calDate: new Date(), evtDetailId: null,
+    projFilter: { q: '', status: '', cause: '', tag: '' }, projOpenId: null, openCases: {}, openCreditors: {}, cliFilter: { q: '' }, judFilter: { q: '' },
     reportPreview: null, lastAppliedRaw: '', rpStatus: '', lawQ: '', validateHtml: ''
   };
   let rpTimer = null;
@@ -30,14 +30,21 @@
     { id: 'dashboard', label: '工作台', icon: '▦', c: 'oklch(62% 0.052 240)', title: '工作台' },
     { id: 'calendar', label: '日程管理', icon: '◷', c: 'oklch(59% 0.050 155)', title: '日程管理' },
     { id: 'projects', label: '项目管理', icon: '▤', c: 'oklch(61% 0.058 45)', title: '项目管理' },
-    { id: 'personnel', label: '人员管理', icon: '☺', c: 'oklch(69% 0.058 80)', title: '人员管理' },
+    { id: 'clients', label: '对接人', icon: '☺', c: 'oklch(69% 0.058 80)', title: '对接人' },
+    { id: 'judges', label: '经办人', icon: '⚖', c: 'oklch(64% 0.060 70)', title: '经办人' },
     { id: 'export', label: '数据导出', icon: '⇩', c: 'oklch(62% 0.048 200)', title: '数据导出' }
   ];
-  const NAVC = { dashboard: 'oklch(62% 0.052 240)', calendar: 'oklch(59% 0.050 155)', projects: 'oklch(61% 0.058 45)', personnel: 'oklch(69% 0.058 80)', export: 'oklch(62% 0.048 200)' };
+  const NAVC = { dashboard: 'oklch(62% 0.052 240)', calendar: 'oklch(59% 0.050 155)', projects: 'oklch(61% 0.058 45)', clients: 'oklch(69% 0.058 80)', judges: 'oklch(64% 0.060 70)', export: 'oklch(62% 0.048 200)' };
 
   function navigate(v) { state.view = v; state.reportPreview = null; render(); }
 
+  let lastView = null;
   function render() {
+    /* 重渲染前记录当前聚焦的输入（用于检索框输入/删除时不丢失焦点与光标位置） */
+    const activeEl = document.activeElement;
+    const activeAct = (activeEl && activeEl.dataset && activeEl.dataset.act && /^((proj|cli|jud)-q)$/.test(activeEl.dataset.act)) ? activeEl.dataset.act : null;
+    let activeCaret = null;
+    if (activeAct && activeEl.selectionStart != null) { try { activeCaret = activeEl.selectionStart; } catch (e) {} }
     $('#nav').innerHTML = NAV.map((n) => {
       const active = state.view === n.id;
       const st = active ? `background:${n.c};color:#fff;border-color:transparent;` : '';
@@ -49,10 +56,26 @@
     if (state.view === 'dashboard') view.innerHTML = viewDashboard();
     else if (state.view === 'calendar') view.innerHTML = viewCalendar();
     else if (state.view === 'projects') view.innerHTML = viewProjects();
-    else if (state.view === 'personnel') view.innerHTML = viewPersonnel();
+    else if (state.view === 'clients') view.innerHTML = viewClients();
+    else if (state.view === 'judges') view.innerHTML = viewJudges();
     else if (state.view === 'export') view.innerHTML = viewExport();
+    /* 仅当视图真正切换时才触发入场编排，避免状态更新（勾选/筛选/增删）时整页重放动画 */
+    if (state.view !== lastView) {
+      view.classList.remove('is-entering');
+      void view.offsetWidth; /* 强制回流以重启动画 */
+      view.classList.add('is-entering');
+      lastView = state.view;
+    }
     bindView();
     $('.view-scroll').scrollTop = 0;
+    /* 检索框：重渲染后恢复焦点与光标，确保可连续输入/删除 */
+    if (activeAct) {
+      const nin = $('[data-act="' + activeAct + '"]');
+      if (nin && nin.focus) {
+        nin.focus();
+        if (activeCaret != null && nin.setSelectionRange) { try { nin.setSelectionRange(activeCaret, activeCaret); } catch (e) {} }
+      }
+    }
   }
 
   /* ===================== Modal ===================== */
@@ -90,8 +113,87 @@
       closeModal(); render();
     });
   }
-  function field(name, label, type, val, opts) {
-    opts = opts || {}; val = val == null ? '' : val;
+  /* 轻量 toast 反馈：用于板块新增/恢复等操作的即时状态提示 */
+  function toast(msg, kind) {
+    let t = $('#toast');
+    if (!t) { t = document.createElement('div'); t.id = 'toast'; document.body.appendChild(t); }
+    t.textContent = msg;
+    t.className = 'toast show' + (kind ? ' toast-' + kind : '');
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => { t.className = 'toast'; }, 2400);
+  }
+  /* 板块管理弹窗：列出可恢复的板块（已隐藏的固定板块 / 已软删除的自定义板块）并提供恢复入口；
+   * 同时内置新增自定义板块表单（名称必填、重名校验）。所有操作即时刷新弹窗与底层列表，形成清晰的状态管理。 */
+  function openSectionManager(ctx) {
+    const entity = ctx.entity, project = ctx.project;
+    const cfg = ensureSectionCfg(entity);
+    function bodyHtml() {
+      const hidden = cfg.hidden || [];
+      const delIds = cfg.deletedSections || [];
+      const delRows = delIds.map((id) => {
+        const s = (cfg.added || []).find((x) => x.id === id);
+        const nm = s ? s.section : '(未知板块)';
+        return `<div class="sm-row"><span class="sm-name">${esc(nm)}<span class="sm-tag">自定义</span></span><button class="btn sm-restore" data-restore="added" data-secid="${esc(id)}">恢复</button></div>`;
+      }).join('');
+      const hidRows = hidden.map((nm) => `<div class="sm-row"><span class="sm-name">${esc(nm)}<span class="sm-tag sm-tag--fix">固定</span></span><button class="btn sm-restore" data-restore="hidden" data-si="${esc(nm)}">恢复</button></div>`).join('');
+      const rows = delRows + hidRows;
+      const restoreBlock = rows
+        ? `<div class="sm-list">${rows}</div>`
+        : `<div class="sm-empty">当前没有可恢复的板块。</div>`;
+      return `<div class="sec-manage">
+        <div class="sm-section">
+          <div class="sm-title">恢复已隐藏 / 已删除的板块</div>
+          ${restoreBlock}
+        </div>
+        <div class="sm-section">
+          <div class="sm-title">新增自定义板块</div>
+          <div class="sm-add">
+            <input data-field="secName" type="text" class="sm-input" placeholder="板块名称，如：项目进度、风险评估…">
+            <button class="btn primary" id="sm-add-btn">新增</button>
+          </div>
+          <div class="sm-hint" id="sm-hint"></div>
+        </div>
+      </div>`;
+    }
+    openModal('板块管理', bodyHtml(), null, { readonly: true });
+    const body = $('#modal-body');
+    function bind() {
+      body.querySelectorAll('.sm-restore').forEach((b) => {
+        b.onclick = () => {
+          if (b.dataset.restore === 'hidden') {
+            const nm = b.dataset.si;
+            cfg.hidden = (cfg.hidden || []).filter((x) => x !== nm);
+            toast('已恢复板块「' + nm + '」');
+          } else {
+            const id = b.dataset.secid;
+            cfg.deletedSections = (cfg.deletedSections || []).filter((x) => x !== id);
+            const s = (cfg.added || []).find((x) => x.id === id);
+            toast('已恢复板块「' + (s ? s.section : '') + '」');
+          }
+          S.saveProject(project, false);
+          $('#modal-body').innerHTML = bodyHtml();
+          bind(); render();
+        };
+      });
+      const addBtn = $('#sm-add-btn');
+      if (addBtn) addBtn.onclick = () => {
+        const inp = body.querySelector('input[data-field="secName"]');
+        const hint = $('#sm-hint');
+        const name = (inp.value || '').trim();
+        if (!name) { if (hint) { hint.textContent = '请输入板块名称'; hint.className = 'sm-hint sm-hint--err'; } return; }
+        const exists = projectModules(entity).some((m) => m.section === name) || (cfg.added || []).some((s) => s.section === name) || (cfg.hidden || []).indexOf(name) >= 0;
+        if (exists) { if (hint) { hint.textContent = '已存在同名板块，请换一个名称'; hint.className = 'sm-hint sm-hint--err'; } return; }
+        cfg.added = cfg.added || [];
+        cfg.added.push({ id: 'sec_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), section: name, fields: [] });
+        S.saveProject(project, false);
+        toast('已新增板块「' + name + '」', 'ok');
+        $('#modal-body').innerHTML = bodyHtml();
+        bind(); render();
+      };
+    }
+    bind();
+  }
+  function field(name, label, type, val, opts) {    opts = opts || {}; val = val == null ? '' : val;
     let ctrl;
     if (type === 'textarea') ctrl = `<textarea data-field="${name}" rows="${opts.rows || 3}" placeholder="${opts.ph || ''}">${esc(val)}</textarea>`;
     else if (type === 'select') ctrl = `<select data-field="${name}">${opts.options.map((o) => `<option value="${esc(o)}" ${o === val ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
@@ -137,9 +239,16 @@
   }
   function szDetailHtml(seizures) {
     const list = Array.isArray(seizures) ? seizures : [];
-    if (!list.length) return '<div class="kv"><span class="kv-k">查封与保全</span><span class="kv-v">—</span></div>';
-    const rows = list.map((s) => { const e = szCompute(s.type || '不动产', s.start); const end = s.end || e.end, rEnd = s.renewalEnd || e.renewalEnd; return `<div class="sz-detail-row"><b>${esc(s.type || '')}</b> ${esc(s.name || '')}：起算 ${esc(s.start || '—')} → 查封截止 <b>${esc(end || '—')}</b>；续封最迟 <b>${esc(rEnd || '—')}</b></div>`; }).join('');
-    return `<div class="kv kv-wide"><span class="kv-k">查封与保全（${list.length} 项）</span><div class="kv-v sz-detail">${rows}</div></div>`;
+    if (!list.length) return '<div class="sz-empty">暂无查封物</div>';
+    return list.map((s) => {
+      const e = szCompute(s.type || '不动产', s.start);
+      const end = s.end || e.end, rEnd = s.renewalEnd || e.renewalEnd;
+      const head = `<div class="sz-item-head"><span class="sz-item-type">${esc(s.type || '')}</span>${s.name ? `<span class="sz-item-name">· ${esc(s.name)}</span>` : ''}</div>`;
+      return `${head}
+        <div class="kv kv-mod"><span class="kv-k">查封起算时间</span><span class="kv-v">${esc(s.start || '—')}</span></div>
+        <div class="kv kv-mod"><span class="kv-k">截止时间</span><span class="kv-v">${esc(end || '—')}</span></div>
+        <div class="kv kv-mod"><span class="kv-k">续封时间</span><span class="kv-v">${esc(rEnd || '—')}</span></div>`;
+    }).join('');
   }
   function collectSeizureItems() {
     const ed = $('#modal-body [data-sz-editor]'); if (!ed) return [];
@@ -227,7 +336,7 @@
     ed.querySelectorAll('[data-cr-holder]').forEach((h) => {
       const name = (h.querySelector('[data-cr="name"]').value || '').trim();
       const transfers = [];
-      h.querySelectorAll('[data-cr-tf]').forEach((r) => {
+      h.querySelectorAll('.cr-tf-row').forEach((r) => {
         const date = (r.querySelector('[data-cr-tf="date"]').value || '').trim();
         const from = (r.querySelector('[data-cr-tf="from"]').value || '').trim();
         const to = (r.querySelector('[data-cr-tf="to"]').value || '').trim();
@@ -247,7 +356,7 @@
       if (ev.target.closest('[data-cr-add]')) { const empty = ed.querySelector('.cr-empty'); if (empty) empty.remove(); ed.insertAdjacentHTML('beforeend', crHolderHtml({ id: LB.util.uid('cr') })); }
       else if (ev.target.closest('[data-cr-del]')) { const h = ev.target.closest('[data-cr-holder]'); if (h) h.remove(); if (!ed.querySelector('[data-cr-holder]')) ed.insertAdjacentHTML('afterbegin', '<div class="cr-empty">暂无债权持有人，点击「+ 添加债权持有人」录入。</div>'); }
       else if (ev.target.closest('[data-cr-add-tf]')) { const h = ev.target.closest('[data-cr-holder]'); const tf = h.querySelector('.cr-transfers'); const empty = tf.querySelector('.cr-empty-sm'); if (empty) empty.remove(); tf.insertAdjacentHTML('beforeend', crTransferRowHtml({})); }
-      else if (ev.target.closest('[data-cr-tf-del]')) { const r = ev.target.closest('[data-cr-tf]'); const tf = r.closest('.cr-transfers'); if (r) r.remove(); if (!tf.querySelector('[data-cr-tf]')) tf.insertAdjacentHTML('afterbegin', '<div class="cr-empty-sm">暂无流转记录，点击「+ 添加流转」录入。</div>'); }
+      else if (ev.target.closest('[data-cr-tf-del]')) { const r = ev.target.closest('.cr-tf-row'); const tf = r.closest('.cr-transfers'); if (r) r.remove(); if (!tf.querySelector('.cr-tf-row')) tf.insertAdjacentHTML('afterbegin', '<div class="cr-empty-sm">暂无流转记录，点击「+ 添加流转」录入。</div>'); }
     });
   }
 
@@ -323,30 +432,69 @@
     return `<ul class="rem-list">${rem.map((r) => `<li class="rem rem-${r.level === '高' ? 'hi' : 'mid'}"><span class="rem-type">${r.type}</span><span class="rem-proj" data-act="goto-proj" data-id="${r.projectId || ''}">${r.title ? esc(r.title) + (r.project && r.project !== r.title ? ' <i class="rem-projtag">@' + esc(r.project) + '</i>' : '') : esc(r.project)}</span><span class="rem-date">${fmtDate(r.date)} ${rel(r.date)}</span>${r.type !== '任务截止' ? `<button class="rem-done" type="button" data-act="evt-done" data-kind="${r.kind || ''}" data-ref="${r.projectId || ''}" data-case="${r.caseId || ''}" data-evt="${r.eventId || ''}" title="标记完成 / 取消" aria-label="标记完成">✓</button>` : ''}</li>`).join('')}</ul>`;
   }
 
-  /* ===================== 日程管理（周/月 + 冲突检测） ===================== */
+  /* ===================== 日程管理（周/月视图 + 冲突检测 + 点击交互） ===================== */
   function viewCalendar() {
     const evts = S.deriveEvents();
     const conflicts = detectConflicts(evts);
     let body, label;
-    if (state.calMode === 'week') { const r = weekView(state.calDate, evts, conflicts); body = r.html; label = r.label; }
-    else { const r = monthView(state.calDate, evts); body = r.html; label = r.label; }
+    if (state.calMode === 'month') { const r = monthView(state.calDate, evts); body = r.html; label = r.label; }
+    else { const r = weekView(state.calDate, evts, conflicts); body = r.html; label = r.label; } /* 默认周视图 */
+    const navBar = `<div class="cal-nav"><button class="btn" data-act="cal-prev">‹</button><button class="btn" data-act="cal-today">今天</button><button class="btn" data-act="cal-next">›</button><strong class="cal-label">${label}</strong></div>`;
+    /* 点击某条日程展开详情：含所属项目选择、编辑/删除/完成；点击空白处新建已由 evt-empty 处理 */
+    let detail = '';
+    if (state.evtDetailId) {
+      const e = evts.find((x) => x.id === state.evtDetailId);
+      if (e) detail = evtDetailPanel(e); else state.evtDetailId = null;
+    }
     return `
     <div class="toolbar cal-bar">
-      <div class="cal-nav"><button class="btn" data-act="cal-prev">‹</button><button class="btn" data-act="cal-today">今天</button><button class="btn" data-act="cal-next">›</button><strong class="cal-label">${label}</strong></div>
+      ${navBar}
       <div class="seg"><button class="seg-btn ${state.calMode === 'week' ? 'on' : ''}" data-act="cal-week">周视图</button><button class="seg-btn ${state.calMode === 'month' ? 'on' : ''}" data-act="cal-month">月视图</button></div>
       <button class="btn primary" data-act="evt-new">+ 新建日程</button>
     </div>
     ${conflicts.length ? `<div class="conflict-banner">⚠ 检测到 ${conflicts.length} 处日程冲突：${conflicts.map((c) => esc(c.aTitle) + ' × ' + esc(c.bTitle)).join('；')}</div>` : ''}
-    <div class="cal-body">${body}</div>`;
+    <div class="cal-body">${body}</div>
+    ${detail ? `<div class="evt-detail-wrap">${detail}</div>` : `<p class="cal-hint hint">提示：点击任意日程可查看详情并编辑 / 删除；点击网格空白处可直接新建日程。</p>`}`;
+  }
+  /* 日程详情面板：展示所属项目（手动日程可改）、编辑 / 删除 / 完成等操作 */
+  function evtDetailPanel(e) {
+    const KIND = { task: '任务', hearing: '开庭', contract: '合同到期', renewal: '续费', manual: '手动' };
+    const done = S.isScheduleDone({ eventId: e.kind === 'manual' ? e.id : null, projectId: e.projectId, caseId: e.caseId || null, kind: e.kind });
+    const isManual = e.kind === 'manual';
+    const projName = e.projectId ? (S.getProject(e.projectId) || {}).name || '' : '';
+    let projField;
+    if (isManual) {
+      const opts = ['（不关联项目）'].concat(S.projectCaseOptions().map((o) => o.label));
+      const cur = evtCurLabel(e);
+      projField = `<div class="evt-detail-row"><label>所属项目</label><select data-act="evt-project" data-evt="${esc(e.id)}">${opts.map((o) => `<option ${o === cur ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></div>`;
+    } else {
+      projField = `<div class="evt-detail-row"><label>所属项目</label><span class="evt-detail-val">${esc(projName || '—')}</span></div>`;
+    }
+    let openBtn = '';
+    if (!isManual) {
+      if (e.kind === 'task') openBtn = `<button class="mini" data-act="evt-open" data-kind="task" data-ref="${esc(e.refId || '')}">打开任务</button>`;
+      else openBtn = `<button class="mini" data-act="evt-open" data-kind="${esc(e.kind)}" data-ref="${esc(e.projectId || '')}">打开关联</button>`;
+    }
+    return `<div class="evt-detail">
+      <div class="evt-detail-head"><span class="evt-kind evt-kind-${e.kind}">${KIND[e.kind] || e.kind}</span><span class="evt-detail-title">${esc(e.title)}</span><span class="evt-detail-time">${fmtDT(e.start)}${e.end ? ' — ' + fmtDT(e.end) : ''}</span></div>
+      ${projField}
+      <div class="evt-detail-ops">
+        ${isManual ? `<button class="mini" data-act="evt-edit" data-evt="${esc(e.id)}">编辑</button>` : ''}
+        ${openBtn}
+        <button class="mini" data-act="evt-done" data-kind="${esc(e.kind)}" data-ref="${esc(e.projectId || e.refId || '')}" data-case="${esc(e.caseId || '')}" data-evt="${isManual ? esc(e.id) : ''}">${done ? '恢复' : '完成'}</button>
+        ${isManual ? `<button class="mini danger" data-act="evt-del" data-evt="${esc(e.id)}">删除</button>` : ''}
+        <button class="mini" data-act="evt-detail-close">关闭</button>
+      </div>
+    </div>`;
   }
   function evtChip(e, conf, small) {
     const doneCls = e.done ? ' done' : '';
     const confCls = conf ? ' conf' : '';
     const smCls = small ? ' sm' : '';
     const time = e.allDay ? '' : `<span class="evt-t">${String(new Date(e.start).getHours()).padStart(2, '0')}:${String(new Date(e.start).getMinutes()).padStart(2, '0')}</span>`;
-    const projTag = (e.kind === 'manual' && e.projectId) ? (() => { const p = S.getProject(e.projectId); return p ? ` <span class="evt-proj">@${esc(p.name)}</span>` : ''; })() : '';
+    const projTag = (e.kind === 'manual' && e.projectId) ? (() => { const p = S.getProject(e.projectId); if (!p) return ''; if (e.caseId) { const c = (p.cases || []).find((x) => x.id === e.caseId); return c ? ` <span class="evt-proj">@${esc(p.name)} › ${esc(c.name)}</span>` : ` <span class="evt-proj">@${esc(p.name)}</span>`; } return ` <span class="evt-proj">@${esc(p.name)}</span>`; })() : '';
     const doneBtn = `<button class="evt-done" type="button" data-act="evt-done" data-kind="${e.kind}" data-ref="${e.refId || ''}" data-case="${e.caseId || ''}" data-evt="${e.kind === 'manual' ? e.id : ''}" title="标记完成 / 取消" aria-label="标记完成">✓</button>`;
-    return `<div class="evt evt-${e.kind}${doneCls}${confCls}${smCls}" data-act="evt-open" data-id="${e.id}" data-kind="${e.kind}" data-ref="${e.refId || ''}">${time}${esc(e.title)}${projTag}${doneBtn}</div>`;
+    return `<div class="evt evt-${e.kind}${doneCls}${confCls}${smCls}" data-act="evt-select" data-id="${e.id}" data-kind="${e.kind}" data-ref="${e.refId || ''}" title="点击查看详情 / 编辑 / 删除">${time}${esc(e.title)}${projTag}${doneBtn}</div>`;
   }
   function startOfWeek(d) { const x = new Date(d); const day = (x.getDay() + 6) % 7; x.setDate(x.getDate() - day); x.setHours(0, 0, 0, 0); return x; }
   function weekView(ref, evts, conflicts) {
@@ -364,7 +512,8 @@
       const timed = dayEvents.filter((e) => !e.allDay);
       let cells = hours.map((h) => {
         const items = timed.filter((e) => Math.floor(new Date(e.start).getHours() / 2) * 2 === h);
-        return `<div class="wk-cell">${items.map((e) => evtChip(e, isConf(e, conflicts), false)).join('')}</div>`;
+        const cd = new Date(d); cd.setHours(h, 0, 0, 0);
+        return `<div class="wk-cell" data-act="evt-empty" data-date="${cd.toISOString()}">${items.map((e) => evtChip(e, isConf(e, conflicts), false)).join('')}</div>`;
       }).join('');
       grid += `<div class="wk-col"><div class="wk-allday">${allDay.map((e) => evtChip(e, false, false)).join('')}</div><div class="wk-hours">${cells}</div></div>`;
     });
@@ -382,7 +531,8 @@
       const d = new Date(start); d.setDate(d.getDate() + i);
       const inMonth = d.getMonth() === m; const today = new Date(); today.setHours(0, 0, 0, 0); const isT = d.getTime() === today.getTime();
       const dayEvents = evts.filter((e) => new Date(e.start).toDateString() === d.toDateString());
-      cells += `<div class="mc ${inMonth ? '' : 'out'} ${isT ? 'istoday' : ''}"><div class="mc-d">${d.getDate()}</div>${dayEvents.slice(0, 3).map((e) => evtChip(e, false, true)).join('')}${dayEvents.length > 3 ? '<div class="mc-more">+' + (dayEvents.length - 3) + '</div>' : ''}</div>`;
+      const cd = new Date(d); cd.setHours(9, 0, 0, 0);
+      cells += `<div class="mc ${inMonth ? '' : 'out'} ${isT ? 'istoday' : ''}" data-act="evt-empty" data-date="${cd.toISOString()}"><div class="mc-d">${d.getDate()}</div>${dayEvents.slice(0, 3).map((e) => evtChip(e, false, true)).join('')}${dayEvents.length > 3 ? '<div class="mc-more">+' + (dayEvents.length - 3) + '</div>' : ''}</div>`;
     }
     return { html: `<div class="mc-dow-row">${dowHeader}</div><div class="mc-grid">${cells}</div>`, label };
   }
@@ -409,6 +559,43 @@
     return out;
   }
 
+  /* 手动日程的所属项目/子项目解析：选项标签 → {projectId, caseId}；以及反向回显当前标签。
+   * 关键：子项目（关联案件）选项的 id 形如 "pid|cid"，含 projectId/caseId；选中子项目时必须同时保存
+   * caseId，否则回显时会回落到大项目（此前子项目"选不上"的根因）。 */
+  function evtOptByLabel(label) { return S.projectCaseOptions().find((o) => o.label === label) || null; }
+  function evtCurLabel(base) {
+    if (!base || !base.projectId) return '';
+    const o = S.projectCaseOptions().find((x) => base.caseId
+      ? (x.isCase && x.projectId === base.projectId && x.caseId === base.caseId)
+      : (!x.isCase && x.id === base.projectId));
+    return o ? o.label : '';
+  }
+  function evtResolve(label) {
+    if (!label || label === '（不关联项目）') return { projectId: null, caseId: null };
+    const o = evtOptByLabel(label);
+    if (!o) return { projectId: null, caseId: null };
+    return o.isCase ? { projectId: o.projectId, caseId: o.caseId } : { projectId: o.id, caseId: null };
+  }
+
+  /* 新建 / 编辑手动日程：所属项目下拉含子项目（需求 5），保存时按标签反查 projectId/caseId（需求 2 增改）
+   * draft 可携带 start/end（点击网格空白处新建时预填时间）。 */
+  function bindEvtForm(id, draft) {
+    const e = id ? S.getManualEvent(id) : null;
+    const base = Object.assign({}, e || {}, draft || {});
+    const opts = ['（不关联项目）'].concat(S.projectCaseOptions().map((o) => o.label));
+    const curLabel = evtCurLabel(base);
+    openModal(id ? '编辑日程' : '新建日程',
+      field('title', '标题', 'text', base.title || '') +
+      field('project', '所属项目（含子项目）', 'select', curLabel, { options: opts }) +
+      field('start', '开始时间', 'datetime', base.start ? ('' + base.start).slice(0, 16) : '') +
+      field('end', '结束时间', 'datetime', base.end ? ('' + base.end).slice(0, 16) : ''),
+      (v) => {
+        const r = evtResolve(v.project);
+        S.saveManualEvent({ id: id || undefined, title: v.title || '未命名日程', start: v.start ? new Date(v.start).toISOString() : new Date().toISOString(), end: v.end ? new Date(v.end).toISOString() : null, projectId: r.projectId, caseId: r.caseId }, !id);
+        closeModal(); render();
+      });
+  }
+
   /* ===================== 项目管理（schema 驱动的通用模板 + 类别扩展） =====================
    * 设计原则：
    *  1) 通用字段模块（PROJ_GENERIC_MODULES）适用于所有类别，不假设任何特定角色（如债权人）。
@@ -429,10 +616,10 @@
       { key: 'caseNo', label: '主案号', type: 'text' }
     ] },
     { section: '当事人信息', fields: [
-      { key: 'party', label: '当事人（我方委托人）', type: 'text' },
+      { key: 'party', label: '当事人', type: 'text' },
       { key: 'opponent', label: '对方当事人', type: 'text' },
       { key: 'contact', label: '对接人', type: 'text' },
-      { key: 'contactContact', label: '对接人联系方式', type: 'text' }
+      { key: 'contactContact', label: '联系方式', type: 'text' }
     ] },
     { section: '合同信息', fields: [
       { key: 'contractName', label: '合同名称', type: 'text' },
@@ -484,15 +671,98 @@
     '其他类': { modules: [] }
   };
 
+  /* 核心字段集合：这些 key 的值仍直接存放在项目对象 p[key]（与 deriveEvents/exportCSV/检索等兼容），
+   * 其余动态新增字段的值存放在 p.customValues[fieldId]。 */
+  const CORE_KEYS = (function () {
+    const s = new Set();
+    PROJ_GENERIC_MODULES.forEach((m) => m.fields.forEach((f) => s.add(f.key)));
+    Object.keys(PROJ_CATEGORY_TEMPLATES).forEach((k) => {
+      (PROJ_CATEGORY_TEMPLATES[k].modules || []).forEach((m) => m.fields.forEach((f) => s.add(f.key)));
+    });
+    s.add('litigSubject'); // 诉讼类新增的「诉讼标的」
+    return s;
+  })();
+  function isCoreField(f) { return CORE_KEYS.has(f.key); }
+  /* 确保项目带有 sectionCfg 结构，避免后续访问 undefined */
+  function ensureSectionCfg(p) {
+    if (!p.sectionCfg) p.sectionCfg = { hidden: [], renamed: {}, added: [], addedFields: {}, removedFields: {}, sectionOrder: [], collapsed: [], deletedSections: [] };
+    ['hidden', 'renamed', 'added', 'addedFields', 'removedFields', 'sectionOrder', 'collapsed', 'deletedSections'].forEach((k) => { if (p.sectionCfg[k] == null) p.sectionCfg[k] = (k === 'renamed' || k === 'addedFields' || k === 'removedFields') ? {} : []; });
+    return p.sectionCfg;
+  }
+  /* 在 sectionCfg 中定位一个动态新增字段的定义（可能存于 addedFields[板块] 或 added 板块的 fields 中） */
+  function findAddedFieldDef(cfg, sec, fid) {
+    const inAdded = (cfg.addedFields[sec] || []).find((f) => f.id === fid);
+    if (inAdded) return { field: inAdded, where: 'addedFields', sec: sec };
+    for (const s of (cfg.added || [])) {
+      if (s.section === sec) { const f = (s.fields || []).find((x) => x.id === fid); if (f) return { field: f, where: 'section', secObj: s }; }
+    }
+    return null;
+  }
+  /* 板块管理上下文解析：按钮 data-pid 存在 → 案件上下文（返回案件 + 所属项目）；
+   * 否则 → 项目上下文（entity = project）。确保 entity 有 sectionCfg / customValues。 */
+  function resolveSectionCtx(el) {
+    const pid = el.dataset.pid;
+    const id = el.dataset.id;
+    if (pid) {
+      const project = S.getProject(pid); if (!project) return null;
+      const c = S.getCase(pid, id);
+      if (c) { ensureSectionCfg(c); if (c.customValues == null) c.customValues = {}; return { entity: c, project: project, isCase: true }; }
+      return { entity: project, project: project, isCase: false };
+    }
+    const p = S.getProject(id);
+    if (p) { ensureSectionCfg(p); return { entity: p, project: p, isCase: false }; }
+    return null;
+  }
+
+  /* 有效模块 = 默认模块 经 每项目 sectionCfg 覆盖（重命名/删除板块/增删字段）+ 类别扩展 + 诉讼类特例。
+   * 返回的字段对象均为副本，渲染/收集阶段再决定取值来源（核心字段 p[key] / 新增字段 p.customValues[id]）。 */
   function projectModules(p) {
     const cat = (p && p.category) || '其他类';
     const tpl = PROJ_CATEGORY_TEMPLATES[cat] || PROJ_CATEGORY_TEMPLATES['其他类'];
-    return PROJ_GENERIC_MODULES.concat(tpl.modules);
+    const cfg = (p && p.sectionCfg) || { hidden: [], renamed: {}, added: [], addedFields: {}, removedFields: {}, deletedSections: [] };
+    const hidden = cfg.hidden || [];
+    const renamed = cfg.renamed || {};
+    const addedFields = cfg.addedFields || {};
+    const removedFields = cfg.removedFields || {};
+    let mods = PROJ_GENERIC_MODULES.concat(tpl.modules).map((m) => ({ section: m.section, fields: m.fields.map((f) => Object.assign({}, f)) }));
+    // 板块重命名
+    mods.forEach((m) => { if (renamed[m.section]) m.section = renamed[m.section]; });
+    // 板块内字段删除
+    mods.forEach((m) => { if (removedFields[m.section]) m.fields = m.fields.filter((f) => removedFields[m.section].indexOf(f.key) < 0); });
+    // 板块删除
+    mods = mods.filter((m) => hidden.indexOf(m.section) < 0);
+    // 向标准/已有板块追加字段（规范化：动态新增字段以 id 作 key，便于渲染/编辑/删除处理器统一按 key 读写）
+    Object.keys(addedFields).forEach((sec) => {
+      const target = mods.find((m) => m.section === sec || renamed[m.section] === sec);
+      if (target) target.fields = target.fields.concat((addedFields[sec] || []).map((f) => Object.assign({ type: 'text' }, f, { key: f.id })));
+    });
+    // 诉讼类：主案号→案号，并在基础信息增加「诉讼标的」
+    if (cat === '诉讼类') {
+      const base = mods.find((m) => m.section === '基础信息');
+      if (base) {
+        const cn = base.fields.find((f) => f.key === 'caseNo'); if (cn) cn.label = '案号';
+        if (!base.fields.some((f) => f.key === 'litigSubject')) base.fields.push({ key: 'litigSubject', label: '诉讼标的', type: 'text', wide: true });
+      }
+    }
+    // 追加用户新增的独立板块（已被软删除的自定义板块不渲染，可在「板块管理」中恢复）
+    const deletedSecIds = cfg.deletedSections || [];
+    (cfg.added || []).forEach((s) => { if (deletedSecIds.indexOf(s.id) < 0) mods.push({ section: s.section, fields: (s.fields || []).map((f) => Object.assign({ type: 'text' }, f, { key: f.id })), addedId: s.id }); });
+    // 自定义板块顺序：按 sectionOrder 排序，未列出的板块排到末尾保持原序
+    const order = cfg.sectionOrder || [];
+    if (order.length) {
+      mods.sort((a, b) => {
+        const ia = order.indexOf(a.section), ib = order.indexOf(b.section);
+        return (ia < 0 ? 9999 : ia) - (ib < 0 ? 9999 : ib);
+      });
+    }
+    return mods;
   }
+  /* 渲染单个字段控件：核心字段取 p[key]，新增字段取 p.customValues[id]；控件 data-field 用字段 key/id 以便 collectForm 收集 */
   function projectField(f, p) {
     if (f.type === 'seizures') return szEditorHtml(p ? p.seizures : []);
     if (f.type === 'creditors') return creditorEditorHtml(p ? p.creditors : []);
-    let val = p ? p[f.key] : '';
+    let val = '';
+    if (p) val = isCoreField(f) ? (p[f.key] || '') : ((p.customValues || {})[f.key] || '');
     if (f.type === 'date' && val) val = ('' + val).slice(0, 10);
     if (f.type === 'datetime' && val) val = ('' + val).slice(0, 16);
     const opts = f.options ? { options: f.options } : {};
@@ -517,7 +787,15 @@
   function viewProjects() {
     const f = state.projFilter;
     let list = S.listProjects();
-    if (f.q) list = list.filter((p) => (p.name + (p.party || '') + (p.opponent || '') + (p.caseNo || '') + (p.cause || '') + (p.agentLawyer || '') + (p.category || '')).toLowerCase().indexOf(f.q.toLowerCase()) >= 0);
+    if (f.q) {
+      const q = f.q.toLowerCase();
+      list = list.filter((p) => {
+        const base = (p.name + (p.party || '') + (p.opponent || '') + (p.caseNo || '') + (p.cause || '') + (p.agentLawyer || '') + (p.category || '') + (p.litigSubject || '')).toLowerCase();
+        if (base.indexOf(q) >= 0) return true;
+        // 同时检索大项目下的子项目（关联案件）名称 / 案号 / 当事人等
+        return (p.cases || []).some((c) => (c.name + (c.caseNo || '') + (c.party || '') + (c.opponent || '') + (c.cause || '')).toLowerCase().indexOf(q) >= 0);
+      });
+    }
     if (f.status) list = list.filter((p) => p.status === f.status);
     if (f.cause) list = list.filter((p) => p.cause === f.cause);
     if (f.tag) list = list.filter((p) => (p.tags || []).indexOf(f.tag) >= 0);
@@ -547,7 +825,7 @@
     }).join('');
     return `
     <div class="toolbar">
-      <input class="search" data-act="proj-q" placeholder="搜索项目/债权人/对方/案号…" value="${esc(f.q)}">
+      <input class="search" data-act="proj-q" placeholder="搜索项目/子项目/债权人/对方/案号…" value="${esc(f.q)}">
       <select data-act="proj-status">${['<option value="">全部状态</option>'].concat(['进行中', '已暂停', '已完成', '已结案'].map((s) => `<option ${f.status === s ? 'selected' : ''}>${s}</option>`)).join('')}</select>
       <select data-act="proj-cause">${['<option value="">全部案由</option>'].concat(causes.map((c) => `<option ${f.cause === c ? 'selected' : ''}>${esc(c)}</option>`)).join('')}</select>
       <select data-act="proj-tag">${['<option value="">全部标签</option>'].concat(tags.map((t) => `<option ${f.tag === t ? 'selected' : ''}>${esc(t)}</option>`)).join('')}</select>
@@ -556,59 +834,113 @@
     <ul class="card-list proj-list">${cards || `<li class="empty"><p>还没有匹配的项目，点击右上角「+ 新建项目」开始登记台账。</p></li>`}</ul>`;
   }
   function kv(label, val) { return `<div class="kv"><span class="kv-k">${label}</span><span class="kv-v">${esc(val) || '—'}</span></div>`; }
+  /* 查封与保全：每个查封物的三个时间字段单独成行，与其它简单宽字段完全一致（kv-mod 三列网格），
+   * 类型/名称作为上下文内嵌于「查封起算时间」行的值中，避免长 label 撑破 96px 列。 */
+  function seizuresAsKvMod(seizures) {
+    const list = Array.isArray(seizures) ? seizures : [];
+    if (!list.length) return '<div class="kv kv-mod"><span class="kv-k">查封与保全</span><span class="kv-v">—</span></div>';
+    return list.map((s) => {
+      const e = szCompute(s.type || '不动产', s.start);
+      const end = s.end || e.end, rEnd = s.renewalEnd || e.renewalEnd;
+      const ctx = `${s.type || '不动产'}${s.name ? '·' + s.name : ''}`;
+      return `<div class="kv kv-mod"><span class="kv-k">查封起算时间</span><span class="kv-v" title="${esc(ctx)}">${esc(ctx)}：${esc(s.start || '—')}</span></div>
+        <div class="kv kv-mod"><span class="kv-k">截止时间</span><span class="kv-v">${esc(end || '—')}</span></div>
+        <div class="kv kv-mod"><span class="kv-k">续封时间</span><span class="kv-v">${esc(rEnd || '—')}</span></div>`;
+    }).join('');
+  }
+  /* 破产要素：每位债权持有人单行（kv-mod），value 内含流转次数与最新债权金额，与其它字段格式一致 */
+  function creditorsAsKvMod(holders) {
+    const list = Array.isArray(holders) ? holders : [];
+    if (!list.length) return '<div class="kv kv-mod"><span class="kv-k">债权人</span><span class="kv-v">—</span></div>';
+    return list.map((h) => {
+      const tfs = Array.isArray(h.transfers) ? h.transfers : [];
+      const last = tfs.length ? (tfs[tfs.length - 1].amount || '') : '';
+      const summary = `${tfs.length} 次流转${last ? '，最新债权 ' + esc(last) : ''}`;
+      return `<div class="kv kv-mod"><span class="kv-k">债权人（${esc(h.name || '未命名')}）</span><span class="kv-v" title="${esc(summary)}">${summary}</span></div>`;
+    }).join('');
+  }
 
   /* 自定义板块渲染：每个板块独立卡片，支持展开/折叠、字段增删 */
-  function customModulesHtml(p) {
-    const cms = p.customModules || [];
-    if (!cms.length) {
-      return `<div class="cm-empty">
-        <span class="cm-empty-hint">暂无自定义板块</span>
-        <button class="mini primary cm-add-sec" data-act="cm-add-sec" data-id="${p.id}">+ 新增板块</button>
-      </div>`;
-    }
-    return cms.map((cm, si) => {
-      const fields = cm.fields || [];
-      const fieldRows = fields.length
-        ? fields.map((f, fi) => `
-          <tr class="cm-field-row">
-            <td class="cm-fname">${esc(f.label)}</td>
-            <td class="cm-fval">${esc(f.value || '—')}</td>
-            <td class="cm-fops">
-              <button class="mini" data-act="cm-edit-field" data-id="${p.id}" data-si="${si}" data-fi="${fi}" title="编辑字段">编辑</button>
-              <button class="mini danger" data-act="cm-del-field" data-id="${p.id}" data-si="${si}" data-fi="${fi}" title="删除字段">删</button>
-            </td>
-          </tr>`).join('')
-        : `<tr><td colspan="3" class="cm-no-fields">暂无字段，点击「+ 字段」添加</td></tr>`;
-      return `
-      <div class="cm-card" data-si="${si}">
-        <div class="cm-card-head">
-          <span class="cm-card-title">${esc(cm.section)}</span>
-          <div class="cm-card-ops">
-            <button class="mini" data-act="cm-rename-sec" data-id="${p.id}" data-si="${si}" title="重命名板块">重命名</button>
-            <button class="mini" data-act="cm-add-field" data-id="${p.id}" data-si="${si}" title="新增字段">+ 字段</button>
-            <button class="mini danger" data-act="cm-del-sec" data-id="${p.id}" data-si="${si}" title="删除整个板块">删除板块</button>
-          </div>
-        </div>
-        <div class="cm-card-body">
-          <table class="cm-tbl">
-            <thead><tr><th class="cm-th-name">字段名</th><th class="cm-th-val">内容</th><th class="cm-th-ops"></th></tr></thead>
-            <tbody>${fieldRows}</tbody>
-          </table>
-        </div>
-      </div>`;
-    }).join('') + `
-      <div class="cm-footer">
-        <button class="mini primary cm-add-sec" data-act="cm-add-sec" data-id="${p.id}">+ 新增板块</button>
-      </div>`;
+  /* 单个板块渲染为独立卡片：标题行含板块管理按钮，字段逐行展示并支持新增字段的编辑/删除 */
+  function renderModuleBlock(p, m) {
+    const isAddedSection = !!m.addedId;
+    const secAttrs = isAddedSection ? ` data-secid="${esc(m.addedId)}"` : '';
+    const fieldsHtml = m.fields.length ? m.fields.map((f) => {
+      if (f.type === 'seizures') return seizuresAsKvMod(p.seizures);
+      if (f.type === 'creditors') return creditorsAsKvMod(p.creditors);
+      const val = isCoreField(f) ? formatFieldValue(p[f.key], f.type) : ((p.customValues || {})[f.key] || '—');
+      const isAdded = !isCoreField(f);
+      const editBtn = isAdded ? `<button class="mini" data-act="cm-edit-field" data-id="${p.id}" data-si="${esc(m.section)}" data-fid="${esc(f.key)}">编辑</button>` : '';
+      const delBtn = `<button class="mini danger" data-act="cm-del-field" data-id="${p.id}" data-si="${esc(m.section)}" data-fid="${esc(f.key)}">删</button>`;
+      return `<div class="kv kv-mod"><span class="kv-k">${esc(f.label)}</span><span class="kv-v" title="${esc(val)}">${esc(val) || '—'}</span><span class="kv-op">${editBtn}${delBtn}</span></div>`;
+    }).join('') : '<div class="kv kv-mod"><span class="kv-k">提示</span><span class="kv-v">暂无字段，点击「+ 字段」添加</span></div>';
+    const cfg = ensureSectionCfg(p);
+    const collapsed = (cfg.collapsed || []).indexOf(m.section) >= 0;
+    return `<div class="mod-block${collapsed ? ' is-collapsed' : ''}" data-section="${esc(m.section)}" draggable="true" data-sec-name="${esc(m.section)}">
+      <div class="kv-sec mod-sec">
+        <span class="mod-sec-left">
+          <span class="mod-drag-handle" title="拖拽调整顺序">⠿</span>
+          <button class="mod-collapse-btn" data-act="cm-toggle-collapse" data-id="${p.id}" data-si="${esc(m.section)}" title="${collapsed ? '展开' : '折叠'}">${collapsed ? '▶' : '▼'}</button>
+          <span class="mod-sec-title">${esc(m.section)}</span>
+        </span>
+        <span class="mod-ops">
+          <button class="mini" data-act="cm-edit-sec" data-id="${p.id}" data-si="${esc(m.section)}"${secAttrs} title="编辑本板块内容">编辑</button>
+          <button class="mini" data-act="cm-add-field" data-id="${p.id}" data-si="${esc(m.section)}"${secAttrs} title="新增字段">+ 字段</button>
+          <button class="mini danger" data-act="cm-del-sec" data-id="${p.id}" data-si="${esc(m.section)}"${secAttrs} title="删除整个板块">删除板块</button>
+        </span>
+      </div>
+      <div class="mod-body"><div class="mod-body-inner">${fieldsHtml}</div></div>
+    </div>`;
+  }
+  /* 关联案件的板块渲染：与项目板块完全同构（mod-block + kv-mod + 编辑/+字段/删除板块），
+   * 数据取自案件 c；自定义字段值优先取 c.customValues，回退到 p.customValues（共享项目级配置）。
+   * 配色使用 c-aud（紫调）与大项目区别，class 加 --case 修饰。 */
+  function renderCaseModuleBlock(c, m, projectId) {
+    const isAddedSection = !!m.addedId;
+    const secAttrs = isAddedSection ? ` data-secid="${esc(m.addedId)}"` : '';
+    /* 案件板块按钮：data-id=案件id, data-pid=项目id；处理器据此区分案件上下文 */
+    const ctx = ` data-id="${esc(c.id)}" data-pid="${esc(projectId)}"`;
+    const fieldsHtml = m.fields.length ? m.fields.map((f) => {
+      if (f.type === 'seizures') return seizuresAsKvMod(c.seizures);
+      if (f.type === 'creditors') return creditorsAsKvMod(c.creditors);
+      let val;
+      if (isCoreField(f)) val = formatFieldValue(c[f.key], f.type);
+      else val = ((c.customValues || {})[f.key] || '—');
+      const isAdded = !isCoreField(f);
+      const editBtn = isAdded ? `<button class="mini" data-act="cm-edit-field"${ctx} data-si="${esc(m.section)}" data-fid="${esc(f.key)}">编辑</button>` : '';
+      const delBtn = `<button class="mini danger" data-act="cm-del-field"${ctx} data-si="${esc(m.section)}" data-fid="${esc(f.key)}">删</button>`;
+      return `<div class="kv kv-mod"><span class="kv-k">${esc(f.label)}</span><span class="kv-v" title="${esc(val)}">${esc(val) || '—'}</span><span class="kv-op">${editBtn}${delBtn}</span></div>`;
+    }).join('') : '<div class="kv kv-mod"><span class="kv-k">提示</span><span class="kv-v">暂无字段，点击「+ 字段」添加</span></div>';
+    const cfgC = ensureSectionCfg(c);
+    const collapsed = (cfgC.collapsed || []).indexOf(m.section) >= 0;
+    const collapseAttrs = ` data-id="${esc(c.id)}" data-pid="${esc(projectId)}"`;
+    return `<div class="mod-block mod-block--case${collapsed ? ' is-collapsed' : ''}" data-section="${esc(m.section)}" draggable="true" data-sec-name="${esc(m.section)}">
+      <div class="kv-sec mod-sec mod-sec--case">
+        <span class="mod-sec-left">
+          <span class="mod-drag-handle" title="拖拽调整顺序">⠿</span>
+          <button class="mod-collapse-btn" data-act="cm-toggle-collapse"${collapseAttrs} data-si="${esc(m.section)}" title="${collapsed ? '展开' : '折叠'}">${collapsed ? '▶' : '▼'}</button>
+          <span class="mod-sec-title">${esc(m.section)}</span>
+        </span>
+        <span class="mod-ops">
+          <button class="mini" data-act="cm-edit-sec"${ctx} data-si="${esc(m.section)}"${secAttrs} title="编辑本板块内容">编辑</button>
+          <button class="mini" data-act="cm-add-field"${ctx} data-si="${esc(m.section)}"${secAttrs} title="新增字段">+ 字段</button>
+          <button class="mini danger" data-act="cm-del-sec"${ctx} data-si="${esc(m.section)}"${secAttrs} title="删除整个板块">删除板块</button>
+        </span>
+      </div>
+      <div class="mod-body"><div class="mod-body-inner">${fieldsHtml}</div></div>
+    </div>`;
   }
 
   function projDetailHtml(p) {
     const tasks = S.listTasks().filter((t) => t.projectId === p.id);
     const mods = projectModules(p);
-    const secHtml = mods.map((m) => `<div><div class="kv-sec">${m.section}</div>${m.fields.map((f) => f.key === 'seizures' ? szDetailHtml(p.seizures) : f.key === 'creditors' ? crDetailHtml(p.creditors) : kv(f.label, formatFieldValue(p[f.key], f.type))).join('')}</div>`).join('');
+    const secHtml = mods.map((m) => renderModuleBlock(p, m)).join('');
+    const rc = (p.sectionCfg ? ((p.sectionCfg.hidden || []).length + (p.sectionCfg.deletedSections || []).length) : 0);
+    const secBadge = rc ? ` <span class="sec-badge">${rc}</span>` : '';
     const notesHtml = (p.notes && p.notes.length) ? p.notes.map((d, i) => `<li><span class="prog-d">${esc(d.date || '')}</span><span class="prog-c">${esc(d.content || '')}</span><span class="prog-a">${esc(d.recipient ? ('接收人：' + d.recipient) : '')}${d.archiveLocation ? (' · 位置：' + d.archiveLocation) : ''}${d.archiveCabinet ? (' · 柜：' + d.archiveCabinet) : ''}${d.author ? (' · ' + d.author) : ''} <button class="mini danger" data-act="proj-delnote" data-id="${p.id}" data-doc="${i}">删</button></span></li>`).join('') : '<li class="empty">暂无备注</li>';
     return `<div class="proj-detail">
-      <div class="kv-grid">${secHtml}</div>
+      <div class="mod-area" data-pid="${esc(p.id)}">${secHtml}</div>
+      <div class="ph" style="margin-top:14px"><button class="mini primary" data-act="cm-add-sec" data-id="${p.id}">+ 新增板块</button><button class="mini" data-act="cm-manage-sec" data-id="${p.id}">板块管理${secBadge}</button></div>
       <div class="kv-sec">关联案件（${esc(String((p.cases || []).length))}）</div>
       <div class="cases-area">${casesHtml(p)}</div>
       <div class="ph"><button class="mini" data-act="case-new" data-id="${p.id}">+ 关联案件</button></div>
@@ -619,8 +951,6 @@
       <div class="kv-sec">关联任务</div>
       <ul class="prog">${tasks.map((t) => `<li><span class="prog-d">${fmtDate(t.dueDate)}</span><span class="prog-c">${esc(t.title)}</span><span class="prog-a"><span class="st st-${taskStatusClass(t.status)} st-act" data-act="task-status" data-id="${t.id}">${t.status}</span></span></li>`).join('') || '<li class="empty">暂无任务</li>'}</ul>
       <div class="ph"><button class="mini" data-act="proj-addtask" data-id="${p.id}">+ 任务</button><button class="mini" data-act="proj-addprog" data-id="${p.id}">+ 进展</button><button class="mini" data-act="proj-edit" data-id="${p.id}">编辑</button><button class="mini danger" data-act="proj-del" data-id="${p.id}">删除</button></div>
-      <div class="kv-sec cm-sec-title">自定义板块<span class="cm-sec-hint">可自由新增板块与字段，独立于标准表单之外</span></div>
-      <div class="cm-area">${customModulesHtml(p)}</div>
     </div>`;
   }
   function projForm(p) {
@@ -638,13 +968,23 @@
   function collectEntityData(v, base) {
     const cat = v.category || '其他类';
     const tpl = PROJ_CATEGORY_TEMPLATES[cat] || PROJ_CATEGORY_TEMPLATES['其他类'];
-    const allFields = PROJ_GENERIC_MODULES.concat(tpl.modules).reduce((a, m) => a.concat(m.fields), []);
+    // 用当前项目的有效模块（含动态新增字段）来收集，确保 customValues 不丢失
+    const baseMods = projectModules(base || {});
+    const allFields = baseMods.reduce((a, m) => a.concat(m.fields), []);
     const data = {};
+    const customValues = Object.assign({}, (base && base.customValues) || {});
     allFields.forEach((f) => {
-      let val = v[f.key];
-      if (f.type === 'date' || f.type === 'datetime') val = val ? new Date(val).toISOString() : null;
-      else val = (val == null ? '' : val);
-      data[f.key] = val;
+      if (f.type === 'seizures' || f.type === 'creditors') return; // 单独处理
+      if (isCoreField(f)) {
+        let val = v[f.key];
+        if (f.type === 'date' || f.type === 'datetime') val = val ? new Date(val).toISOString() : null;
+        else val = (val == null ? '' : val);
+        data[f.key] = val;
+      } else {
+        // 动态新增字段：值存入 customValues[fieldId]
+        const fv = (v[f.key] == null ? '' : v[f.key]);
+        customValues[f.key] = fv;
+      }
     });
     // 查封与保全：从多项编辑器收集，并按最早查封截止日自动回填「查封到期提醒日」（提前 30 天，便于办理续封）
     data.seizures = collectSeizureItems();
@@ -654,10 +994,61 @@
     }
     // 破产要素：仅当类别为破产类时从编辑器收集多项债权持有人；否则保留既有数据
     data.creditors = (cat === '破产类') ? collectCreditorItems() : (base && base.creditors ? base.creditors.slice() : []);
+    data.customValues = customValues;
+    data.sectionCfg = (base && base.sectionCfg) ? base.sectionCfg : { hidden: [], renamed: {}, added: [], addedFields: {}, removedFields: {}, sectionOrder: [], collapsed: [], deletedSections: [] };
     data.tags = v.tags ? v.tags.split(/[,，]/).map((s) => s.trim()).filter(Boolean) : (base ? base.tags : []);
     data.notes = (base && base.notes) ? base.notes.slice() : [];
     data.progress = (base && base.progress) ? base.progress.slice() : [];
     return data;
+  }
+
+  /* 单板块编辑：弹窗仅渲染该板块的字段（文本字段走 form-grid；查封/破产走对应编辑器），
+   * 保存时按字段类型归并到 p / p.customValues / p.seizures / p.creditors，不影响其他板块。 */
+  function sectionFormHtml(p, m) {
+    const complex = m.fields.filter((f) => f.type === 'seizures' || f.type === 'creditors');
+    const normal = m.fields.filter((f) => f.type !== 'seizures' && f.type !== 'creditors');
+    let html = '';
+    complex.forEach((f) => {
+      if (f.type === 'seizures') html += szEditorHtml(p.seizures);
+      else if (f.type === 'creditors') html += creditorEditorHtml(p.creditors);
+    });
+    if (normal.length) html += '<div class="form-grid">' + normal.map((f) => projectField(f, p)).join('') + '</div>';
+    return html || '<div class="hint">该板块暂无字段</div>';
+  }
+  function collectSectionData(v, base, m, project) {
+    /* 就地修改 base（项目或案件），保存 saveTarget（案件时为所属项目） */
+    const saveTarget = project || base;
+    const customValues = Object.assign({}, base.customValues || {});
+    m.fields.forEach((f) => {
+      if (f.type === 'seizures') {
+        base.seizures = collectSeizureItems();
+        if (base.seizures.length) {
+          const ends = base.seizures.map((s) => s.end).filter(Boolean).sort();
+          if (ends.length) { const lead = szAddMonths(ends[0], -30); if (lead) base.renewalDate = new Date(lead + 'T00:00:00.000Z').toISOString(); }
+        }
+      } else if (f.type === 'creditors') {
+        base.creditors = collectCreditorItems();
+      } else if (isCoreField(f)) {
+        let val = v[f.key];
+        if (f.type === 'date' || f.type === 'datetime') val = val ? new Date(val).toISOString() : null;
+        else val = (val == null ? '' : val);
+        base[f.key] = val;
+      } else {
+        customValues[f.key] = (v[f.key] == null ? '' : v[f.key]);
+      }
+    });
+    base.customValues = customValues;
+    S.saveProject(saveTarget, false);
+  }
+  function openSectionEdit(entity, sectionName, project) {
+    const isCase = !!(project && project !== entity);
+    const mods = isCase ? caseModules(entity) : projectModules(entity);
+    const m = mods.find((x) => x.section === sectionName); if (!m) return;
+    openModal('编辑板块：' + sectionName, sectionFormHtml(entity, m), (v) => {
+      collectSectionData(v, entity, m, project || entity);
+      closeModal(); render();
+    });
+    bindSeizureEditor(); bindCreditorEditor();
   }
 
   function openProjForm(id, draft) {
@@ -707,14 +1098,17 @@
   }
   function caseDetailHtml(p, c) {
     const mods = caseModules(c);
-    const secHtml = mods.map((m) => `<div><div class="kv-sec">${m.section}</div>${m.fields.map((f) => f.key === 'seizures' ? szDetailHtml(c.seizures) : f.key === 'creditors' ? crDetailHtml(c.creditors) : kv(f.label, formatFieldValue(c[f.key], f.type))).join('')}</div>`).join('');
+    const secHtml = mods.map((m) => renderCaseModuleBlock(c, m, p.id)).join('');
+    const crc = (c.sectionCfg ? ((c.sectionCfg.hidden || []).length + (c.sectionCfg.deletedSections || []).length) : 0);
+    const csecBadge = crc ? ` <span class="sec-badge">${crc}</span>` : '';
     const notesHtml = (c.notes && c.notes.length) ? c.notes.map((d, i) => `<li><span class="prog-d">${esc(d.date || '')}</span><span class="prog-c">${esc(d.content || '')}</span><span class="prog-a">${esc(d.recipient ? ('接收人：' + d.recipient) : '')}${d.archiveLocation ? (' · 位置：' + d.archiveLocation) : ''}${d.archiveCabinet ? (' · 柜：' + d.archiveCabinet) : ''}${d.author ? (' · ' + d.author) : ''} <button class="mini danger" data-act="case-delnote" data-pid="${p.id}" data-cid="${c.id}" data-doc="${i}">删</button></span></li>`).join('') : '<li class="empty">暂无备注</li>';
     const progHtml = (c.progress && c.progress.length) ? c.progress.map((x, i) => `<li><span class="prog-d">${esc(x.date)}</span><span class="prog-c">${esc(x.content)}</span><span class="prog-a"><button class="mini" data-act="case-editprog" data-pid="${p.id}" data-cid="${c.id}" data-idx="${i}">编辑</button> <button class="mini danger" data-act="case-delprog" data-pid="${p.id}" data-cid="${c.id}" data-idx="${i}">删</button></span></li>`).join('') : '<li class="empty">暂无进展</li>';
     return `<div class="case-detail">
-      <div class="kv-grid">${secHtml}</div>
-      <div class="kv-sec">其他备注</div>
+      <div class="ph" style="margin-bottom:8px"><button class="mini" data-act="cm-manage-sec" data-pid="${esc(p.id)}" data-id="${esc(c.id)}">板块管理${csecBadge}</button></div>
+      <div class="mod-area mod-area--case" data-pid="${esc(p.id)}" data-cid="${esc(c.id)}">${secHtml}</div>
+      <div class="kv-sec kv-sec--case">其他备注</div>
       <ul class="prog">${notesHtml}</ul>
-      <div class="kv-sec">进展状态</div>
+      <div class="kv-sec kv-sec--case">进展状态</div>
       <ul class="prog">${progHtml}</ul>
       <div class="ph"><button class="mini" data-act="case-addprog" data-pid="${p.id}" data-cid="${c.id}">+ 进展</button><button class="mini" data-act="case-edit" data-pid="${p.id}" data-cid="${c.id}">编辑</button><button class="mini danger" data-act="case-del" data-pid="${p.id}" data-cid="${c.id}">删除</button></div>
     </div>`;
@@ -748,11 +1142,11 @@
     bindSeizureEditor(); bindCreditorEditor();
   }
 
-  /* ===================== 人员管理（拆分为「对接人」与「经办法官」两个独立区域） ===================== */
-  function viewPersonnel() {
-    const cls = S.listClients();
-    const jds = S.listJudges();
-    const cliCards = cls.length ? `<ul class="card-list">${cls.map((c) => `<li class="card-pill card-pill--personnel" data-act="cli-open" data-id="${c.id}">
+  /* ===================== 对接人 / 经办人（拆分为两个独立界面） ===================== */
+  function viewClients() {
+    const q = (state.cliFilter.q || '').toLowerCase();
+    const list = S.listClients().filter((c) => !q || (c.name + (c.project || '') + (c.company || '') + (c.contact || '')).toLowerCase().indexOf(q) >= 0);
+    const cards = list.length ? `<ul class="card-list">${list.map((c) => `<li class="card-pill card-pill--personnel" data-act="cli-open" data-id="${c.id}">
       <span class="drag-handle" data-drag-handle title="拖拽排序">⠿</span>
       <span class="cp-cell cp-name">${esc(c.name)}</span>
       <span class="cp-cell cp-proj">${esc(c.project || '—')}${c.company ? '<span class="cp-sub">' + esc(c.company) + '</span>' : ''}</span>
@@ -763,9 +1157,23 @@
         <button class="mini danger" data-act="cli-del" data-id="${c.id}">删</button>
       </span>
     </li>`).join('')}</ul>` : `<div class="empty"><p>暂无对接人</p></div>`;
-    const judCards = jds.length ? `<ul class="card-list">${jds.map((j) => `<li class="card-pill card-pill--personnel" data-act="jud-open" data-id="${j.id}">
+    return `
+    <div class="toolbar">
+      <input class="search" data-act="cli-q" placeholder="检索对接人 / 项目 / 公司 / 联系方式…" value="${esc(state.cliFilter.q)}">
+      <button class="btn primary" data-act="cli-new">+ 新建对接人</button>
+    </div>
+    <div class="card-list-head card-list-head--personnel">
+      <span></span><span>姓名</span><span>所属项目</span><span>联系电话</span><span>地址</span><span></span>
+    </div>
+    ${cards}`;
+  }
+  function viewJudges() {
+    const q = (state.judFilter.q || '').toLowerCase();
+    const list = S.listJudges().filter((j) => !q || (j.name + (j.case || '') + (j.court || '') + (j.contact || '') + (j.role || '')).toLowerCase().indexOf(q) >= 0);
+    const cards = list.length ? `<ul class="card-list">${list.map((j) => `<li class="card-pill card-pill--personnel card-pill--judges" data-act="jud-open" data-id="${j.id}">
       <span class="drag-handle" data-drag-handle title="拖拽排序">⠿</span>
       <span class="cp-cell cp-name">${esc(j.name)}</span>
+      <span class="cp-cell cp-role">${esc(j.role || '—')}</span>
       <span class="cp-cell cp-proj">${esc(j.case || '—')}${j.court ? '<span class="cp-sub">' + esc(j.court) + '</span>' : ''}</span>
       <span class="cp-cell cp-contact">${esc(j.contact || '—')}<span class="cp-sub">沟通 ${j.records ? j.records.length : 0} 条</span></span>
       <span class="cp-cell cp-addr">${esc(j.address || '—')}</span>
@@ -773,36 +1181,56 @@
         <button class="mini" data-act="jud-edit" data-id="${j.id}">编辑</button>
         <button class="mini danger" data-act="jud-del" data-id="${j.id}">删</button>
       </span>
-    </li>`).join('')}</ul>` : `<div class="empty"><p>暂无经办法官</p></div>`;
+    </li>`).join('')}</ul>` : `<div class="empty"><p>暂无经办人</p></div>`;
     return `
-    <section class="panel">
-      <div class="ph"><h3 class="tt">对接人</h3><button class="link" data-act="cli-new">+ 新建对接人</button></div>
-      <div class="card-list-head card-list-head--personnel">
-        <span></span><span>姓名</span><span>所属项目</span><span>联系电话</span><span>地址</span><span></span>
-      </div>
-      ${cliCards}
-    </section>
-    <section class="panel">
-      <div class="ph"><h3 class="tt">经办法官</h3><button class="link" data-act="jud-new">+ 新建经办法官</button></div>
-      <div class="card-list-head card-list-head--personnel">
-        <span></span><span>经办人</span><span>所属案件</span><span>联系方式</span><span>地址</span><span></span>
-      </div>
-      ${judCards}
-    </section>`;
+    <div class="toolbar">
+      <input class="search" data-act="jud-q" placeholder="检索经办人 / 案件 / 法院 / 职务…" value="${esc(state.judFilter.q)}">
+      <button class="btn primary" data-act="jud-new">+ 新建经办人</button>
+    </div>
+    <div class="card-list-head card-list-head--judges">
+      <span></span><span>经办人</span><span>职务</span><span>所属案件</span><span>联系方式</span><span>地址</span><span></span>
+    </div>
+    ${cards}`;
   }
-  function cliForm(c) { c = c || {}; const projOpts = S.listProjects().map((p) => p.name); return field('name', '对接人', 'text', c.name) + fieldCombo('project', '所属项目', c.project, projOpts, { wide: true }) + field('company', '所属公司', 'text', c.company) + field('contact', '联系方式', 'text', c.contact) + field('address', '地址', 'text', c.address, { wide: true }); }
-  function bindCliForm(id) { const c = id ? S.getClient(id) : null; openModal(id ? '编辑对接人' : '新建对接人', cliForm(c), (v) => { const data = { name: v.name, project: v.project, company: v.company, contact: v.contact, address: v.address }; if (id) { data.id = id; S.saveClient(data, false); } else S.saveClient(data, true); closeModal(); render(); }); }
+  function cliForm(c) { c = c || {}; const projOpts = S.projectCaseOptions().map((o) => o.label); return field('name', '对接人', 'text', c.name) + fieldCombo('project', '所属项目（含子项目）', c.project, projOpts, { wide: true }) + field('company', '所属公司', 'text', c.company) + field('contact', '联系方式', 'text', c.contact) + field('address', '地址', 'text', c.address, { wide: true }); }
+  /* 同类别人员重名校验：去空格、忽略大小写；excludeId 用于编辑时排除自身 */
+  function personNameDup(list, name, excludeId) {
+    const n = (name || '').trim().toLowerCase();
+    if (!n) return false;
+    return list.some((x) => x.id !== excludeId && (x.name || '').trim().toLowerCase() === n);
+  }
+  function bindCliForm(id) {
+    const c = id ? S.getClient(id) : null;
+    openModal(id ? '编辑对接人' : '新建对接人', cliForm(c), (v) => {
+      const nm = (v.name || '').trim();
+      if (!nm) { toast('请填写对接人姓名', 'err'); return; }
+      if (personNameDup(S.listClients(), nm, id)) { toast('对接人「' + nm + '」已存在，请勿重复添加', 'err'); return; }
+      const data = { name: v.name, project: v.project, company: v.company, contact: v.contact, address: v.address };
+      if (id) { data.id = id; S.saveClient(data, false); } else S.saveClient(data, true);
+      closeModal(); render();
+    });
+  }
   function cliDetail(id) {
     const c = S.getClient(id); if (!c) return;
     openModal(c.name + '（对接人）', `<div class="detail"><div class="dl"><div><b>所属项目</b>${esc(c.project || '—')}</div><div><b>所属公司</b>${esc(c.company || '—')}</div><div><b>联系方式</b>${esc(c.contact || '—')}</div><div><b>地址</b>${esc(c.address || '—')}</div></div>
       <h4>沟通情况</h4><ul class="prog">${(c.records || []).map((r) => `<li><span class="prog-d">${esc(r.date)}</span><span class="prog-c">${esc(r.content)}</span><span class="prog-a">${esc(r.by)}</span></li>`).join('') || '<li class="empty">暂无记录</li>'}</ul>
       <div class="ph"><button class="mini" data-act="cli-addrec" data-id="${c.id}">+ 沟通</button><button class="mini" data-act="cli-edit" data-id="${c.id}">编辑</button><button class="mini danger" data-act="cli-del" data-id="${c.id}">删除</button></div></div>`, null, { readonly: true });
   }
-  function judForm(j) { j = j || {}; const projOpts = S.listProjects().map((p) => p.name); return field('name', '经办人', 'text', j.name) + fieldCombo('case', '所属案件', j.case, projOpts, { wide: true }) + field('court', '法院', 'text', j.court) + field('contact', '联系方式', 'text', j.contact) + field('address', '地址', 'text', j.address, { wide: true }); }
-  function bindJudForm(id) { const j = id ? S.getJudge(id) : null; openModal(id ? '编辑经办法官' : '新建经办法官', judForm(j), (v) => { const data = { name: v.name, case: v.case, court: v.court, contact: v.contact, address: v.address }; if (id) { data.id = id; S.saveJudge(data, false); } else S.saveJudge(data, true); closeModal(); render(); }); }
+  function judForm(j) { j = j || {}; const projOpts = S.projectCaseOptions().map((o) => o.label); return field('name', '经办人', 'text', j.name) + fieldCombo('case', '所属案件（含子项目）', j.case, projOpts, { wide: true }) + field('role', '职务', 'select', j.role || '', { options: ['', '法官', '法官助理', '执行法官', '辅拍', '书记员'], wide: true }) + field('court', '法院', 'text', j.court) + field('contact', '联系方式', 'text', j.contact) + field('address', '地址', 'text', j.address, { wide: true }); }
+  function bindJudForm(id) {
+    const j = id ? S.getJudge(id) : null;
+    openModal(id ? '编辑经办人' : '新建经办人', judForm(j), (v) => {
+      const nm = (v.name || '').trim();
+      if (!nm) { toast('请填写经办人姓名', 'err'); return; }
+      if (personNameDup(S.listJudges(), nm, id)) { toast('经办人「' + nm + '」已存在，请勿重复添加', 'err'); return; }
+      const data = { name: v.name, case: v.case, role: v.role, court: v.court, contact: v.contact, address: v.address };
+      if (id) { data.id = id; S.saveJudge(data, false); } else S.saveJudge(data, true);
+      closeModal(); render();
+    });
+  }
   function judDetail(id) {
     const j = S.getJudge(id); if (!j) return;
-    openModal(j.name + '（经办法官）', `<div class="detail"><div class="dl"><div><b>所属案件</b>${esc(j.case || '—')}</div><div><b>法院</b>${esc(j.court || '—')}</div><div><b>联系方式</b>${esc(j.contact || '—')}</div><div><b>地址</b>${esc(j.address || '—')}</div></div>
+    openModal(j.name + '（经办人）', `<div class="detail"><div class="dl"><div><b>所属案件</b>${esc(j.case || '—')}</div><div><b>职务</b>${esc(j.role || '—')}</div><div><b>法院</b>${esc(j.court || '—')}</div><div><b>联系方式</b>${esc(j.contact || '—')}</div><div><b>地址</b>${esc(j.address || '—')}</div></div>
       <h4>沟通情况</h4><ul class="prog">${(j.records || []).map((r) => `<li><span class="prog-d">${esc(r.date)}</span><span class="prog-c">${esc(r.content)}</span><span class="prog-a">${esc(r.by)}</span></li>`).join('') || '<li class="empty">暂无记录</li>'}</ul>
       <div class="ph"><button class="mini" data-act="jud-addrec" data-id="${j.id}">+ 沟通</button><button class="mini" data-act="jud-edit" data-id="${j.id}">编辑</button><button class="mini danger" data-act="jud-del" data-id="${j.id}">删除</button></div></div>`, null, { readonly: true });
   }
@@ -811,7 +1239,7 @@
   function viewExport() {
     return `<div class="export-wrap">
       <section class="panel"><h3 class="tt">报表导出</h3><p class="hint">CSV 可用 Excel 打开，JSON 用于备份与多端恢复。</p>
-        <div class="exp-btns"><button class="btn" data-act="exp" data-t="projects">导出案件台账(CSV)</button><button class="btn" data-act="exp" data-t="cases">导出关联案件(CSV)</button><button class="btn" data-act="exp" data-t="tasks">导出任务(CSV)</button><button class="btn" data-act="exp" data-t="clients">导出对接人(CSV)</button><button class="btn" data-act="exp" data-t="judges">导出经办法官(CSV)</button><button class="btn primary" data-act="exp-json">导出全量备份(JSON)</button></div>
+        <div class="exp-btns"><button class="btn" data-act="exp" data-t="projects">导出案件台账(CSV)</button><button class="btn" data-act="exp" data-t="cases">导出关联案件(CSV)</button><button class="btn" data-act="exp" data-t="tasks">导出任务(CSV)</button><button class="btn" data-act="exp" data-t="clients">导出对接人(CSV)</button><button class="btn" data-act="exp" data-t="judges">导出经办人(CSV)</button><button class="btn primary" data-act="exp-json">导出全量备份(JSON)</button></div>
         <p class="sync-state">上次同步：${S.meta().lastSync ? fmtDT(S.meta().lastSync) : '—'}</p></section>
       <section class="panel"><h3 class="tt">数据恢复 / 多端同步</h3><p class="hint">导入 JSON 备份以恢复数据；同源多标签页通过 BroadcastChannel 实时同步。</p>
         <div class="exp-btns"><label class="btn">选择备份文件导入<input type="file" id="imp-file" accept="application/json" hidden></label><button class="btn danger" data-act="reset-clear">清空所有数据</button></div></section>
@@ -830,6 +1258,8 @@
   }
   const API_BASE = (location.port === '8200') ? '' : 'http://localhost:8200';
   const REMOTE = (location.port === '8200' || location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+  /* 线上只读镜像（GitHub Pages 等静态托管）：非本地工作台一律只读，禁止一切编辑 */
+  const READONLY = !REMOTE;
 
   /* 本地同步服务：每次变更防抖推送；启动时拉取（最后写入者胜出） */
   let _saveTimer = null;
@@ -845,11 +1275,15 @@
   };
   async function remoteHydrate() {
     const V = LB.vault;
-    if (V && V.enabled && !V.isUnlocked()) return; // 锁定状态无密钥，跳过（避免拿到密文也无法解密）
+    if (V && V.enabled && !V.isUnlocked()) return false; // 锁定状态无密钥，跳过（避免拿到密文也无法解密）
     // 本地 / 8200 ：连本地同步服务
     if (REMOTE) {
       try {
-        const r = await fetch(API_BASE + '/api/load');
+        /* 加超时：服务端在云同步开启时可能同步 git pull 阻塞数秒；超时后放弃，不影响已渲染的本地数据 */
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 8000);
+        const r = await fetch(API_BASE + '/api/load', { signal: ctrl.signal });
+        clearTimeout(timer);
         const j = await r.json();
         if (j && j.db) {
           let remoteDb = j.db;
@@ -863,20 +1297,21 @@
               S.importJSON(JSON.stringify(remoteDb));
               S.DB.meta = S.DB.meta || {}; S.DB.meta.syncedAt = j.savedAt;
               await S.persist();
+              return true; // 拉到了更新的远端数据，需要重渲
             } else if (localTs && (!j.savedAt || localTs > j.savedAt)) {
               await S.persist(); // 本地较新 → 推回（密文）
             }
           }
         }
       } catch (e) {}
-      return;
+      return false;
     }
     // 线上（GitHub Pages 等静态托管）：同源拉取加密数据文件（只读镜像，无密码不可读）
     const IS_ONLINE = location.hostname.endsWith('github.io');
     if (IS_ONLINE) {
       try {
         const r = await fetch('data/workplat.enc.json', { cache: 'no-store' });
-        if (!r.ok) return;
+        if (!r.ok) return false;
         const sealed = await r.text();
         if (typeof sealed === 'string' && sealed.indexOf('v1:') === 0 && V && V.key) {
           const remoteDb = await V.unseal(sealed);
@@ -885,12 +1320,14 @@
             S.importJSON(JSON.stringify(remoteDb));
             S.DB.meta = S.DB.meta || {}; S.DB.meta.syncedAt = new Date().toISOString();
             await S.persist();
+            return true;
           }
         }
       } catch (e) {}
-      return;
+      return false;
     }
     // 其它未知宿主：不同步
+    return false;
   }
   async function apiValidate() {
     const payload = { projects: S.listProjects(), tasks: S.listTasks(), clients: S.listClients() };
@@ -935,7 +1372,19 @@
   function download(name, content, mime) { const blob = new Blob([content], { type: mime || 'text/plain;charset=utf-8' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 2000); }
 
   /* ===================== 事件 ===================== */
+  /* 只读镜像模式下一律禁止的变更类动作（纯查看/检索/导航/导出不受影响） */
+  const READONLY_BLOCK = new Set([
+    'task-new', 'task-edit', 'task-del', 'task-toggle', 'task-status',
+    'proj-new', 'proj-edit', 'proj-del', 'proj-addtask', 'proj-addprog', 'proj-editprog', 'proj-delprog', 'proj-delnote',
+    'case-new', 'case-edit', 'case-del', 'case-addprog', 'case-editprog', 'case-delprog', 'case-delnote',
+    'evt-new', 'evt-edit', 'evt-empty', 'evt-project', 'evt-done', 'evt-del',
+    'cli-new', 'cli-edit', 'cli-del', 'cli-addrec',
+    'jud-new', 'jud-edit', 'jud-del', 'jud-addrec',
+    'cm-edit-sec', 'cm-add-sec', 'cm-manage-sec', 'cm-del-sec', 'cm-add-field', 'cm-edit-field', 'cm-del-field',
+    'imp-file', 'report-apply', 'exp-sync'
+  ]);
   function onAct(act, id, el) {
+    if (READONLY && READONLY_BLOCK.has(act)) { toast('只读镜像模式：仅可查看，编辑功能已禁用', 'err'); return; }
     switch (act) {
       case 'goto-proj': if (id) { state.projOpenId = id; navigate('projects'); } break;
       case 'task-new': bindTaskForm(null); break;
@@ -962,9 +1411,20 @@
       case 'case-editprog': { const o = S.getCase(el.dataset.pid, el.dataset.cid); const x = o && o.progress[parseInt(el.dataset.idx, 10)]; if (x) openProgressEditor('编辑案件进展', x, (note) => { S.updateCaseProgress(el.dataset.pid, el.dataset.cid, parseInt(el.dataset.idx, 10), note); render(); }); break; }
       case 'case-delprog': confirmModal('确认删除该案件进展？删除后不可恢复。', () => { S.deleteCaseProgress(el.dataset.pid, el.dataset.cid, parseInt(el.dataset.idx, 10)); render(); }); break;
       case 'case-delnote': confirmModal('确认删除该案件备注？', () => { S.deleteCaseNote(el.dataset.pid, el.dataset.cid, parseInt(el.dataset.doc, 10)); render(); }); break;
-      case 'evt-new': openModal('新建日程', field('title', '标题', 'text', '') + field('project', '所属项目', 'select', '', { options: ['（不关联项目）'].concat(S.listProjects().map((p) => p.name)) }) + field('start', '开始时间', 'datetime', '') + field('end', '结束时间', 'datetime', ''), (v) => { const proj = v.project && v.project !== '（不关联项目）' ? S.listProjects().find((p) => p.name === v.project) : null; S.saveManualEvent({ title: v.title, start: v.start ? new Date(v.start).toISOString() : new Date().toISOString(), end: v.end ? new Date(v.end).toISOString() : null, projectId: proj ? proj.id : null }, true); closeModal(); render(); }); break;
+      case 'evt-new': state.evtDetailId = null; bindEvtForm(null); break;
+      case 'evt-edit': bindEvtForm(el.dataset.evt); break;
+      case 'evt-select': state.evtDetailId = el.dataset.id; render(); break;
+      case 'evt-detail-close': state.evtDetailId = null; render(); break;
+      case 'evt-empty': { const dt = el.dataset.date; if (!dt) break; const start = new Date(dt); const end = new Date(start.getTime() + 3600000); state.evtDetailId = null; bindEvtForm(null, { start: start.toISOString(), end: end.toISOString() }); break; }
+      case 'evt-project': { const eid = el.dataset.evt; const ev = S.getManualEvent(eid); if (!ev) break; const r = evtResolve(el.value); S.saveManualEvent(Object.assign({}, ev, { projectId: r.projectId, caseId: r.caseId }), false); render(); break; }
       case 'evt-open': { const k = el.dataset.kind, ref = el.dataset.ref; if ((k === 'task') && ref) { const t = S.getTask(ref); if (t) openModal('任务', `<div class="detail"><div class="dl"><div><b>任务</b>${esc(t.title)}</div><div><b>优先级</b>${t.priority}</div><div><b>截止</b>${fmtDT(t.dueDate)}</div><div><b>状态</b>${t.status}</div></div></div>`, null, { readonly: true }); } else if ((k === 'hearing' || k === 'contract' || k === 'renewal') && ref) { state.projOpenId = ref; navigate('projects'); } break; }
       case 'evt-done': { const r = { eventId: el.dataset.evt || null, projectId: el.dataset.ref, caseId: el.dataset.case || null, kind: el.dataset.kind }; S.setScheduleDone(r, !S.isScheduleDone(r)); render(); break; }
+      case 'evt-del': {
+        const eid = el.dataset.evt; if (!eid) break;
+        const ev = S.getManualEvent(eid); if (!ev) break;
+        confirmModal('确认删除日程「' + (ev.title || '') + '」？删除后不可恢复。', () => { S.deleteManualEvent(eid); render(); }, { okText: '删除日程' });
+        break;
+      }
       case 'cal-prev': state.calDate = shift(state.calDate, state.calMode === 'week' ? -7 : -1); render(); break;
       case 'cal-next': state.calDate = shift(state.calDate, state.calMode === 'week' ? 7 : 1); render(); break;
       case 'cal-today': state.calDate = new Date(); render(); break;
@@ -978,7 +1438,7 @@
       case 'jud-new': bindJudForm(null); break;
       case 'jud-open': judDetail(id); break;
       case 'jud-edit': bindJudForm(id); break;
-      case 'jud-del': confirmModal('确认删除该经办法官？', () => { S.deleteJudge(id); render(); }); break;
+      case 'jud-del': confirmModal('确认删除该经办人？', () => { S.deleteJudge(id); render(); }); break;
       case 'jud-addrec': openModal('添加沟通记录', field('content', '内容', 'textarea', ''), (v) => { S.addJudgeRecord(id, { content: v.content }); closeModal(); render(); }); break;
       case 'report-apply': applyReport(); break;
       case 'exp-sync': apiSync(); break;
@@ -988,45 +1448,67 @@
       case 'exp-json': download('WORK-Plat_backup_' + LB.util.todayStr() + '.json', S.exportJSON(), 'application/json'); break;
       case 'reset-clear': confirmModal('将清空当前所有数据且不可撤销，确认？', () => { S.resetDemo(); render(); }, { okText: '清空数据' }); break;
 
-      /* ===================== 自定义板块管理 ===================== */
+      /* ===================== 板块与字段动态管理（统一 sectionCfg，项目/案件通用） ===================== */
+      case 'cm-toggle-collapse': {
+        const ctx0 = resolveSectionCtx(el); if (!ctx0) break;
+        const cfg = ensureSectionCfg(ctx0.entity);
+        const sec = el.dataset.si;
+        cfg.collapsed = cfg.collapsed || [];
+        const i = cfg.collapsed.indexOf(sec);
+        const nowCollapsed = i < 0;
+        if (nowCollapsed) cfg.collapsed.push(sec); else cfg.collapsed.splice(i, 1);
+        S.saveProject(ctx0.project, false);
+        /* 就地切换折叠状态：仅切换 class，由 CSS 过渡平滑改变高度，
+           避免整页重渲染（render）导致的闪烁与周边元素跳动 */
+        const block = el.closest('.mod-block');
+        if (block) {
+          block.classList.toggle('is-collapsed', nowCollapsed);
+          el.textContent = nowCollapsed ? '▶' : '▼';
+          el.title = nowCollapsed ? '展开' : '折叠';
+        }
+        break;
+      }
+      case 'cm-edit-sec': { const ctx0 = resolveSectionCtx(el); if (ctx0) openSectionEdit(ctx0.entity, el.dataset.si, ctx0.project); break; }
       case 'cm-add-sec': {
-        /* 新增板块：弹窗输入板块名 */
+        /* 新增独立板块：弹窗输入板块名 */
+        const ctx0 = resolveSectionCtx(el); if (!ctx0) break;
         openModal('新增板块', field('secName', '板块名称', 'text', '', { ph: '如：项目进度、风险评估…', wide: true }), (v) => {
           if (!v.secName || !v.secName.trim()) return;
-          const p = S.getProject(id); if (!p) return;
-          const cms = (p.customModules || []).slice();
-          cms.push({ id: 'cm_' + Date.now(), section: v.secName.trim(), fields: [] });
-          p.customModules = cms;
-          S.saveProject(p, false);
+          const name = v.secName.trim();
+          const cfg = ensureSectionCtx(ctx0.entity);
+          if (projectModules(ctx0.entity).some((m) => m.section === name) || (cfg.added || []).some((s) => s.section === name)) { toast('已存在同名板块', 'err'); return; }
+          cfg.added = cfg.added || [];
+          cfg.added.push({ id: 'sec_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), section: name, fields: [] });
+          S.saveProject(ctx0.project, false);
+          toast('已新增板块「' + name + '」', 'ok');
           closeModal(); render();
         });
         break;
       }
-      case 'cm-rename-sec': {
-        /* 重命名板块 */
-        const si = parseInt(el.dataset.si, 10);
-        const p = S.getProject(id); if (!p) break;
-        const cm = (p.customModules || [])[si]; if (!cm) break;
-        openModal('重命名板块', field('secName', '板块名称', 'text', cm.section, { wide: true }), (v) => {
-          if (!v.secName || !v.secName.trim()) return;
-          const proj = S.getProject(id); if (!proj) return;
-          proj.customModules[si].section = v.secName.trim();
-          S.saveProject(proj, false);
-          closeModal(); render();
-        });
+      case 'cm-manage-sec': {
+        /* 打开板块管理弹窗：恢复已隐藏/已删除的板块、新增自定义板块 */
+        const ctx0 = resolveSectionCtx(el); if (!ctx0) break;
+        openSectionManager(ctx0);
         break;
       }
       case 'cm-del-sec': {
-        /* 删除整个板块（含所有字段），需确认 */
-        const si = parseInt(el.dataset.si, 10);
-        const p = S.getProject(id); if (!p) break;
-        const cm = (p.customModules || [])[si];
+        /* 删除整个板块（含所有字段）：
+       *  - 自定义（新增）板块 → 软删除（记入 deletedSections），保留其字段与数据，可在「板块管理」中恢复；
+       *  - 标准（固定）板块 → 记入 hidden，同样可恢复。 */
+        const sec = el.dataset.si; const secid = el.dataset.secid;
+        const ctx0 = resolveSectionCtx(el); if (!ctx0) break;
+        const cfg = ensureSectionCfg(ctx0.entity);
+        const name = secid ? ((cfg.added || []).find((s) => s.id === secid) || {}).section : sec;
         confirmModal(
-          '确认删除板块「' + (cm ? cm.section : '') + '」及其全部字段？此操作不可撤销。',
+          '确认隐藏/删除板块「' + (name || '') + '」及其全部字段？删除后可在「板块管理」中恢复。',
           () => {
-            const proj = S.getProject(id); if (!proj) return;
-            proj.customModules = (proj.customModules || []).filter((_, i) => i !== si);
-            S.saveProject(proj, false);
+            const ctx2 = resolveSectionCtx(el); if (!ctx2) return;
+            const c = ensureSectionCfg(ctx2.entity);
+            if (secid) { c.deletedSections = c.deletedSections || []; if (c.deletedSections.indexOf(secid) < 0) c.deletedSections.push(secid); }
+            else { c.hidden = c.hidden || []; if (c.hidden.indexOf(sec) < 0) c.hidden.push(sec); }
+            if (c.addedFields) delete c.addedFields[sec];
+            if (c.removedFields) delete c.removedFields[sec];
+            S.saveProject(ctx2.project, false);
             render();
           },
           { okText: '删除板块' }
@@ -1034,64 +1516,82 @@
         break;
       }
       case 'cm-add-field': {
-        /* 新增字段：弹窗输入字段名与初始值 */
-        const si = parseInt(el.dataset.si, 10);
+        /* 新增字段：弹窗输入字段名与初始值；追加到该板块（新增板块写入其 fields，标准板块写入 addedFields） */
+        const sec = el.dataset.si; const secid = el.dataset.secid;
+        const ctx0 = resolveSectionCtx(el); if (!ctx0) break;
         openModal(
           '新增字段',
           field('fieldLabel', '字段名称', 'text', '', { ph: '如：负责律师、风险等级…', wide: true }) +
           field('fieldValue', '字段内容', 'textarea', '', { ph: '填写对应值', wide: true, rows: 3 }),
           (v) => {
             if (!v.fieldLabel || !v.fieldLabel.trim()) return;
-            const proj = S.getProject(id); if (!proj) return;
-            if (!Array.isArray(proj.customModules) || !proj.customModules[si]) return;
-            proj.customModules[si].fields = (proj.customModules[si].fields || []).concat([
-              { id: 'cf_' + Date.now(), label: v.fieldLabel.trim(), value: v.fieldValue || '' }
-            ]);
-            S.saveProject(proj, false);
+            const ctx2 = resolveSectionCtx(el); if (!ctx2) return;
+            const c = ensureSectionCfg(ctx2.entity);
+            const fid = 'cf_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+            const def = { id: fid, label: v.fieldLabel.trim(), type: 'text', value: v.fieldValue || '' };
+            if (secid) {
+              const s = (c.added || []).find((x) => x.id === secid); if (!s) return;
+              s.fields = s.fields || []; s.fields.push(def);
+            } else {
+              c.addedFields = c.addedFields || {}; c.addedFields[sec] = c.addedFields[sec] || [];
+              c.addedFields[sec].push(def);
+            }
+            ctx2.entity.customValues = ctx2.entity.customValues || {};
+            ctx2.entity.customValues[fid] = v.fieldValue || '';
+            S.saveProject(ctx2.project, false);
             closeModal(); render();
           }
         );
         break;
       }
       case 'cm-edit-field': {
-        /* 编辑字段的名称和内容 */
-        const si = parseInt(el.dataset.si, 10);
-        const fi = parseInt(el.dataset.fi, 10);
-        const p = S.getProject(id); if (!p) break;
-        const f = ((p.customModules || [])[si] || {}).fields;
-        if (!f || !f[fi]) break;
-        const fld = f[fi];
+        /* 编辑动态新增字段的名称与内容（核心字段不可改 label，仅可删） */
+        const sec = el.dataset.si; const fid = el.dataset.fid;
+        const ctx0 = resolveSectionCtx(el); if (!ctx0) break;
+        const cfg = ensureSectionCfg(ctx0.entity);
+        const found = findAddedFieldDef(cfg, sec, fid);
+        if (!found) break;
         openModal(
           '编辑字段',
-          field('fieldLabel', '字段名称', 'text', fld.label, { wide: true }) +
-          field('fieldValue', '字段内容', 'textarea', fld.value || '', { wide: true, rows: 3 }),
+          field('fieldLabel', '字段名称', 'text', found.field.label, { wide: true }) +
+          field('fieldValue', '字段内容', 'textarea', found.field.value || '', { wide: true, rows: 3 }),
           (v) => {
             if (!v.fieldLabel || !v.fieldLabel.trim()) return;
-            const proj = S.getProject(id); if (!proj) return;
-            const mf = (proj.customModules[si] || {}).fields;
-            if (!mf || !mf[fi]) return;
-            mf[fi].label = v.fieldLabel.trim();
-            mf[fi].value = v.fieldValue || '';
-            S.saveProject(proj, false);
+            const ctx2 = resolveSectionCtx(el); if (!ctx2) return;
+            const c = ensureSectionCfg(ctx2.entity);
+            const f2 = findAddedFieldDef(c, sec, fid);
+            if (!f2) return;
+            f2.field.label = v.fieldLabel.trim();
+            f2.field.value = v.fieldValue || '';
+            ctx2.entity.customValues = ctx2.entity.customValues || {};
+            ctx2.entity.customValues[fid] = v.fieldValue || '';
+            S.saveProject(ctx2.project, false);
             closeModal(); render();
           }
         );
         break;
       }
       case 'cm-del-field': {
-        /* 删除单个字段 */
-        const si = parseInt(el.dataset.si, 10);
-        const fi = parseInt(el.dataset.fi, 10);
-        const p = S.getProject(id); if (!p) break;
-        const fld = (((p.customModules || [])[si] || {}).fields || [])[fi];
+        /* 删除单个字段：动态字段移除定义并清理值；核心字段记入 removedFields */
+        const sec = el.dataset.si; const fid = el.dataset.fid;
+        const ctx0 = resolveSectionCtx(el); if (!ctx0) break;
+        const cfg = ensureSectionCfg(ctx0.entity);
+        const addedDef = findAddedFieldDef(cfg, sec, fid);
+        const name = addedDef ? addedDef.field.label : (isCoreField({ key: fid }) ? fid : '');
         confirmModal(
-          '确认删除字段「' + (fld ? fld.label : '') + '」？此操作不可撤销。',
+          '确认删除字段「' + (name || '') + '」？此操作不可撤销。',
           () => {
-            const proj = S.getProject(id); if (!proj) return;
-            const mf = (proj.customModules[si] || {}).fields;
-            if (!mf) return;
-            proj.customModules[si].fields = mf.filter((_, i) => i !== fi);
-            S.saveProject(proj, false);
+            const ctx2 = resolveSectionCtx(el); if (!ctx2) return;
+            const c = ensureSectionCfg(ctx2.entity);
+            if (addedDef) {
+              if (addedDef.where === 'addedFields') c.addedFields[sec] = (c.addedFields[sec] || []).filter((f) => f.id !== fid);
+              else if (addedDef.where === 'section') addedDef.secObj.fields = (addedDef.secObj.fields || []).filter((f) => f.id !== fid);
+              if (ctx2.entity.customValues) delete ctx2.entity.customValues[fid];
+            } else {
+              c.removedFields = c.removedFields || {}; c.removedFields[sec] = c.removedFields[sec] || [];
+              if (c.removedFields[sec].indexOf(fid) < 0) c.removedFields[sec].push(fid);
+            }
+            S.saveProject(ctx2.project, false);
             render();
           },
           { okText: '删除字段' }
@@ -1212,12 +1712,13 @@
   }
 
   function bindSortables() {
+    if (READONLY) return; /* 只读镜像：禁止拖拽重排（属数据编辑） */
     // 项目管理：仅在无筛选时启用（筛选态按更新时间排序，手动重排无意义）
     const f = state.projFilter;
     const hasFilter = !!(f.q || f.status || f.cause || f.tag);
     const pl = $('.proj-list');
     if (pl && !hasFilter) enableSortable(pl, { itemSelector: '.proj-row', getKey: (el) => el.dataset.id, onEnd: (ids) => S.reorderProjects(ids) });
-    // 人员管理：对接人 / 经办法官 两个列表分别独立重排
+    // 人员管理：对接人 / 经办人 两个列表分别独立重排
     $$('.card-list').forEach((ul) => {
       if (!ul.querySelector('.card-pill--personnel')) return;
       enableSortable(ul, {
@@ -1233,8 +1734,14 @@
 
   function bindView() {
     $$('[data-view]').forEach((b) => b.onclick = () => navigate(b.dataset.view));
-    $$('[data-act]').forEach((el) => { el.onclick = (e) => { onAct(el.dataset.act, el.dataset.id, el); e.stopPropagation(); }; });
+    /* 普通元素用 click 触发；<select> 用 change 触发（避免点击展开下拉时立即被 click 重渲染关闭） */
+    $$('[data-act]').forEach((el) => {
+      if (el.tagName === 'SELECT') el.onchange = () => onAct(el.dataset.act, el.dataset.id, el);
+      else el.onclick = (e) => { onAct(el.dataset.act, el.dataset.id, el); e.stopPropagation(); };
+    });
     const pq = $('[data-act="proj-q"]'); if (pq) pq.oninput = (e) => { state.projFilter.q = e.target.value; render(); };
+    const cq = $('[data-act="cli-q"]'); if (cq) cq.oninput = (e) => { state.cliFilter.q = e.target.value; render(); };
+    const jq = $('[data-act="jud-q"]'); if (jq) jq.oninput = (e) => { state.judFilter.q = e.target.value; render(); };
     const ps = $('[data-act="proj-status"]'); if (ps) ps.onchange = (e) => { state.projFilter.status = e.target.value; render(); };
     const pc = $('[data-act="proj-cause"]'); if (pc) pc.onchange = (e) => { state.projFilter.cause = e.target.value; render(); };
     const pt = $('[data-act="proj-tag"]'); if (pt) pt.onchange = (e) => { state.projFilter.tag = e.target.value; render(); };
@@ -1255,6 +1762,62 @@
       ta.onkeydown = (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); applyReport(); } };
     }
     bindSortables();
+    bindModAreaDrag();
+  }
+
+  /* ===================== 板块拖拽排序（HTML5 DnD，适配双栏网格） =====================
+   * 拖拽 mod-block 卡片调整板块顺序，拖到目标卡片前方插入；排序持久化到 sectionCfg.sectionOrder。 */
+  let _dragSec = null;
+  function bindModAreaDrag() {
+    if (READONLY) return; /* 只读镜像：禁止板块拖拽排序 */
+    const areas = $$('.mod-area');
+    areas.forEach((area) => {
+      area.addEventListener('dragstart', (e) => {
+        const block = e.target.closest('.mod-block');
+        if (!block) return;
+        _dragSec = block.dataset.secName;
+        if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', _dragSec || ''); }
+        block.classList.add('is-dragging');
+      });
+      area.addEventListener('dragend', () => {
+        _dragSec = null;
+        $$('.mod-block.is-dragging, .mod-block.drag-over').forEach((b) => b.classList.remove('is-dragging', 'drag-over'));
+      });
+      area.addEventListener('dragover', (e) => {
+        if (!_dragSec) return;
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+        const block = e.target.closest('.mod-block');
+        if (block && block.dataset.secName !== _dragSec) {
+          $$('.mod-block.drag-over', area).forEach((b) => b.classList.remove('drag-over'));
+          block.classList.add('drag-over');
+        }
+      });
+      area.addEventListener('drop', (e) => {
+        e.preventDefault();
+        if (!_dragSec) return;
+        const block = e.target.closest('.mod-block');
+        if (!block || block.dataset.secName === _dragSec) return;
+        const targetSec = block.dataset.secName;
+        const pid = area.dataset.pid;
+        const cid = area.dataset.cid;
+        const project = S.getProject(pid); if (!project) return;
+        let entity = project;
+        if (cid) { entity = S.getCase(pid, cid) || project; }
+        const cfg = ensureSectionCfg(entity);
+        const order = cfg.sectionOrder || [];
+        const names = projectModules(entity).map((m) => m.section);
+        const curOrder = order.length ? order.filter((n) => names.indexOf(n) >= 0).concat(names.filter((n) => order.indexOf(n) < 0)) : names.slice();
+        const fromIdx = curOrder.indexOf(_dragSec);
+        const toIdx = curOrder.indexOf(targetSec);
+        if (fromIdx < 0 || toIdx < 0) return;
+        curOrder.splice(fromIdx, 1);
+        curOrder.splice(toIdx, 0, _dragSec);
+        cfg.sectionOrder = curOrder;
+        S.saveProject(project, false);
+        render();
+      });
+    });
   }
 
   LB.onSync = () => { if (state.view) render(); };
@@ -1281,10 +1844,12 @@
   /* ===================== 启动 ===================== */
   function buildShell() {
     const V = LB.vault;
+    if (READONLY) document.body.classList.add('app-readonly');
     const lockBtn = (V && V.enabled) ? '<button class="btn ghost vault-lockbtn" data-act="vault-lock" title="锁定并退出">🔒 锁定</button>' : '';
+    const roBanner = READONLY ? '<div class="ro-banner">🔒 只读镜像模式：当前为线上加密快照，仅供查看，所有编辑功能已禁用</div>' : '';
     $('#app').innerHTML = `
       <aside class="sidebar"><div class="brand">WORK-Plat</div><nav id="nav"></nav></aside>
-      <main class="main"><header class="topbar"><h2 id="view-title"></h2>${lockBtn}</header>
+      <main class="main">${roBanner}<header class="topbar"><h2 id="view-title"></h2>${lockBtn}</header>
       <div class="view-scroll"><div id="view" class="view"></div></div></main>
       <div id="modal" class="modal"><div class="modal-mask" data-act="modal-mask"></div><div class="modal-card"><div class="modal-head"><h3 id="modal-title"></h3><button class="x" id="modal-x">×</button></div><div class="modal-body" id="modal-body"></div><div class="modal-foot"><button class="btn" id="modal-cancel">取消</button><button class="btn primary" id="modal-save">保存</button></div></div></div>`;
     $('#modal-x').onclick = closeModal;
@@ -1292,7 +1857,10 @@
   }
   function boot() {
     buildShell();
-    remoteHydrate().then(render);
+    /* 先用本地数据立即渲染，避免等待远端同步（/api/load 在云同步开启时会阻塞数秒）。
+     * 远端同步改为后台进行：拉取成功且更新则二次渲染。 */
+    render();
+    remoteHydrate().then((hydrated) => { if (hydrated) render(); }).catch(() => {});
   }
   /* 全屏密码锁：未解锁前不渲染任何数据 */
   function renderLock() {
