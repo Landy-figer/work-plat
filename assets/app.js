@@ -52,6 +52,8 @@
     }).join('');
     const nv = NAV.find((n) => n.id === state.view) || NAV[0];
     const vt = $('#view-title'); vt.textContent = nv.title; vt.className = 'tt';
+    /* 同步浏览器标签页标题：与页面内 H1 一致，格式 `WORK-Plat · 页面标题` */
+    if (document.title !== ('WORK-Plat · ' + nv.title)) document.title = 'WORK-Plat · ' + nv.title;
     const view = $('#view'); view.style.setProperty('--mc', NAVC[state.view] || NAVC.dashboard);
     if (state.view === 'dashboard') view.innerHTML = viewDashboard();
     else if (state.view === 'calendar') view.innerHTML = viewCalendar();
