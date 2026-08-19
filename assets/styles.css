@@ -260,6 +260,15 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: var(--fw-bold); col
 .card-pill--personnel .cp-cell.cp-act { display: flex; flex-direction: row; gap: 6px; justify-content: flex-end; align-items: center; }
 .card-pill--personnel .cp-sub { color: var(--muted); font-size: var(--fs-xs); }
 .card-pill--personnel .cp-cell.cp-name, .card-pill--personnel .cp-cell.cp-proj, .card-pill--personnel .cp-cell.cp-contact, .card-pill--personnel .cp-cell.cp-addr { overflow: hidden; }
+/* 经办人「职务」列（需求 8）：基础列定义必须在响应式媒体查询之前，
+ * 否则下方的 @media (max-width:980px) 会因同级特异性被它覆盖而失效（窄屏 7 列被压扁）。 */
+.card-list-head--judges { grid-template-columns: var(--grip) 1.1fr 0.9fr 1.7fr 1.3fr 1.5fr 110px; }
+.card-pill--judges { grid-template-columns: var(--grip) 1.1fr 0.9fr 1.7fr 1.3fr 1.5fr 110px; }
+.card-pill--judges .cp-cell.cp-role { color: var(--ink-2); font-size: var(--fs-sm); overflow: hidden; }
+.card-pill--judges .cp-cell.cp-role, .card-pill--judges .cp-cell.cp-name { font-size: var(--fs-md); }
+/* 列表横向滚动容器：窄屏下保持表头与行同宽对齐，超宽时横向滚动而非挤压列宽 */
+.tbl-scroll { overflow-x: auto; padding-bottom: 2px; }
+.tbl-scroll > .card-list-head, .tbl-scroll > .card-list { min-width: 720px; }
 
 /* ============ 表格（保留用于内嵌详情等场景） ============ */
 .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
@@ -1006,12 +1015,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .evt-kind-renewal { background: oklch(57% 0.048 350 / .14); color: var(--c-aud); }
 .evt-kind-manual { background: oklch(56% 0.070 155 / .14); color: var(--ok); }
 
-/* ===================== 经办人「职务」列（需求 8） ===================== */
-.card-list-head--judges { grid-template-columns: var(--grip) 1.1fr 0.9fr 1.7fr 1.3fr 1.5fr 110px; }
-.card-pill--judges { grid-template-columns: var(--grip) 1.1fr 0.9fr 1.7fr 1.3fr 1.5fr 110px; }
-.card-pill--judges .cp-cell.cp-role { color: var(--ink-2); font-size: var(--fs-sm); overflow: hidden; }
-.card-pill--judges .cp-cell.cp-role, .card-pill--judges .cp-cell.cp-name { font-size: var(--fs-md); }
-
 /* ===================== 密码锁屏（vault） ===================== */
 .vault-lock {
   position: fixed; inset: 0; z-index: 9999;
@@ -1086,3 +1089,5 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .app-readonly [data-act="imp-file"],
 .app-readonly [data-act="exp-sync"],
 .app-readonly .drag-handle { display:none !important; }
+/* 只读下「+ 新建」主按钮隐藏后，搜索框自动撑满工具栏剩余空间，保持工具条对齐 */
+.app-readonly .toolbar .search { flex: 1 1 auto; min-width: 180px; }
