@@ -35,9 +35,29 @@
   function normalizeProjects(projects) {
     (projects || []).forEach((p) => {
       ['cases', 'notes', 'seizures', 'doneEvents'].forEach((k) => { if (!Array.isArray(p[k])) p[k] = []; });
+      if (p.customValues == null) p.customValues = {};
+      if (p.sectionCfg == null) p.sectionCfg = { hidden: [], renamed: {}, added: [], addedFields: {}, removedFields: {} };
+      // 兼容旧版 customModules：迁移进新的 sectionCfg.added（动态板块体系）
       if (!Array.isArray(p.customModules)) p.customModules = [];
+      if (p.customModules.length && !p.sectionCfg._migrated) {
+        p.sectionCfg.added = p.sectionCfg.added || [];
+        p.customValues = p.customValues || {};
+        p.customModules.forEach((m) => {
+          const secId = 'sec_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+          const fields = (m.fields || []).map((f) => {
+            const fid = f.id || ('cf_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6));
+            p.customValues[fid] = f.value || '';
+            return { id: fid, label: f.label, type: f.type || 'text' };
+          });
+          p.sectionCfg.added.push({ id: secId, section: m.section, fields });
+        });
+        p.customModules = [];
+        p.sectionCfg._migrated = true;
+      }
       (p.cases || []).forEach((c) => {
-        ['notes', 'doneEvents'].forEach((k) => { if (!Array.isArray(c[k])) c[k] = []; });
+        ['notes', 'doneEvents', 'seizures', 'progress'].forEach((k) => { if (!Array.isArray(c[k])) c[k] = []; });
+        if (c.customValues == null) c.customValues = {};
+        if (c.sectionCfg == null) c.sectionCfg = { hidden: [], renamed: {}, added: [], addedFields: {}, removedFields: {} };
       });
     });
   }
@@ -201,6 +221,18 @@
     /* == 项目 == */
     listProjects() { return DB.projects.slice(); },
     getProject(id) { return find(DB.projects, id); },
+    /* 下拉选项：大项目 + 「大项目 › 子项目」(关联案件)，value 统一为可读标签字符串，
+     * 与现有保存"所属项目/所属案件"为自由文本的做法保持一致；子项目用 › 分隔可识别层级。 */
+    projectCaseOptions() {
+      const out = [];
+      DB.projects.forEach((p) => {
+        out.push({ id: p.id, label: p.name || '未命名项目', isCase: false });
+        (p.cases || []).forEach((c) => {
+          out.push({ id: p.id + '|' + c.id, label: (p.name || '未命名项目') + ' › ' + (c.name || '未命名案件'), isCase: true, projectId: p.id, caseId: c.id });
+        });
+      });
+      return out;
+    },
     saveProject(p, isNew) {
       p.cases = Array.isArray(p.cases) ? p.cases : [];
       if (isNew) {
@@ -438,7 +470,13 @@
 
     /* == 日程事件（手动事件存入 DB.events，与项目/案件日期派生的日程共用"已完成"语义） == */
     listManualEvents() { return DB.events; },
+    getManualEvent(id) { return DB.events.find((x) => x.id === id) || null; },
     saveManualEvent(e, isNew) {
+      // 编辑：传入已存在 id 时按 id 原地更新（保留创建时间等历史字段）
+      if (e.id) {
+        const idx = DB.events.findIndex((x) => x.id === e.id);
+        if (idx >= 0) { DB.events[idx] = Object.assign({}, DB.events[idx], e); audit('更新日程', e.title); persist(); return DB.events[idx]; }
+      }
       if (isNew) e.id = uid('evt');
       if (e.done === undefined) e.done = false;
       DB.events.push(e);
@@ -578,8 +616,8 @@
       const esc = (v) => { const s = v == null ? '' : ('' + v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
       let rows, headers;
       if (table === 'projects') {
-        headers = ['项目名称', '项目类别', '状态', '委托方(当事人)', '对方当事人', '案号', '代理律师', '债权持有人(多项)', '合同名称', '合同编号', '案由', '签约时间', '律师费', '付款情况', '提取情况', '转付时间', '转付金额', '查封与保全(多项:类型/名称/起算→截止/续封最迟)', '查封最早截止日', '开庭日期', '合同到期日', '查封到期提醒日', '标签'];
-        rows = DB.projects.map((p) => [p.name, p.category || '其他类', p.status, p.party, p.opponent, p.caseNo, p.agentLawyer || '', creditorSummary(p.creditors), p.contractName, p.contractNo, p.cause, p.signDate, p.fee || '', p.feePayment, p.feeExtraction, p.transferTime, p.transferAmount, seizureSummary(p.seizures), seizureEarliest(p.seizures), (p.hearingDate || '').slice(0, 10), (p.contractExpiryDate || '').slice(0, 10), (p.renewalDate || '').slice(0, 10), (p.tags || []).join('|')]);
+        headers = ['项目名称', '项目类别', '状态', '委托方(当事人)', '对方当事人', '案号', '诉讼标的', '代理律师', '债权持有人(多项)', '合同名称', '合同编号', '案由', '签约时间', '律师费', '付款情况', '提取情况', '转付时间', '转付金额', '查封与保全(多项:类型/名称/起算→截止/续封最迟)', '查封最早截止日', '开庭日期', '合同到期日', '查封到期提醒日', '标签'];
+        rows = DB.projects.map((p) => [p.name, p.category || '其他类', p.status, p.party, p.opponent, p.caseNo, p.litigSubject || '', p.agentLawyer || '', creditorSummary(p.creditors), p.contractName, p.contractNo, p.cause, p.signDate, p.fee || '', p.feePayment, p.feeExtraction, p.transferTime, p.transferAmount, seizureSummary(p.seizures), seizureEarliest(p.seizures), (p.hearingDate || '').slice(0, 10), (p.contractExpiryDate || '').slice(0, 10), (p.renewalDate || '').slice(0, 10), (p.tags || []).join('|')]);
       } else if (table === 'tasks') {
         headers = ['标题', '截止日期', '关联项目', '状态'];
         rows = DB.tasks.map((t) => [t.title, (t.dueDate || '').slice(0, 10), (store.getProject(t.projectId) || {}).name || '', t.status]);
@@ -590,8 +628,8 @@
         headers = ['对接人', '所属项目', '所属公司', '联系方式', '地址', '沟通记录数'];
         rows = DB.clients.map((c) => [c.name, c.project, c.company, c.contact, c.address, (c.records || []).length]);
       } else if (table === 'judges') {
-        headers = ['经办人', '所属案件', '法院', '联系方式', '地址', '沟通记录数'];
-        rows = DB.judges.map((j) => [j.name, j.case, j.court, j.contact, j.address, (j.records || []).length]);
+        headers = ['经办人', '职务', '所属案件', '法院', '联系方式', '地址', '沟通记录数'];
+        rows = DB.judges.map((j) => [j.name, j.role || '', j.case, j.court, j.contact, j.address, (j.records || []).length]);
       } else {
         return '';
       }
