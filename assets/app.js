@@ -90,7 +90,12 @@
     saveBtn.style.display = opts.readonly ? 'none' : '';
     saveBtn.onclick = () => { if (onSave) onSave(collectForm()); };
     $('#modal-cancel').onclick = closeModal;
-    /* 模态框内的"备注"textarea：失焦自动保存（bindView 只绑定主视图，模态内需单独处理） */
+    /* 绑定模态框内的 [data-act] 元素（bindView 只绑定主视图；模态内的"＋沟通/编辑/删除"等按钮依赖此处） */
+    $$('#modal-body [data-act]').forEach((el) => {
+      if (el.tagName === 'SELECT') el.onchange = () => onAct(el.dataset.act, el.dataset.id, el);
+      else el.onclick = (e) => { onAct(el.dataset.act, el.dataset.id, el); e.stopPropagation(); };
+    });
+    /* 模态框内的"备注"textarea：失焦自动保存 */
     const cliNote = $('#modal-body [data-act="cli-savenote"]'); if (cliNote) cliNote.onblur = (e) => { S.setClientNote(e.target.dataset.id, e.target.value || ''); toast('备注已保存', 'ok'); };
     const judNote = $('#modal-body [data-act="jud-savenote"]'); if (judNote) judNote.onblur = (e) => { S.setJudgeNote(e.target.dataset.id, e.target.value || ''); toast('备注已保存', 'ok'); };
   }
