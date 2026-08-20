@@ -434,7 +434,7 @@
     },
     addClientRecord(id, rec) {
       const o = find(DB.clients, id); if (!o) return;
-      o.records.unshift({ date: rec.date || todayStr(), content: rec.content, by: rec.by || DB.meta.currentUser });
+      o.records.unshift({ date: rec.date || todayStr(), content: rec.content, note: rec.note || '', by: rec.by || DB.meta.currentUser });
       audit('客户沟通记录', o.name);
       persist();
     },
@@ -455,7 +455,7 @@
     },
     addJudgeRecord(id, rec) {
       const o = find(DB.judges, id); if (!o) return;
-      o.records.unshift({ date: rec.date || todayStr(), content: rec.content, by: rec.by || DB.meta.currentUser });
+      o.records.unshift({ date: rec.date || todayStr(), content: rec.content, note: rec.note || '', by: rec.by || DB.meta.currentUser });
       audit('法官沟通记录', o.name);
       persist();
     },
