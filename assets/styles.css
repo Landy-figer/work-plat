@@ -882,14 +882,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   margin: 0;
   padding: 11px 14px;
-  height: 46px;
   min-height: 46px;
   box-sizing: border-box;
   background: var(--surface-2);
   border-bottom: 1px solid var(--line);
+  flex-wrap: nowrap;
 }
 .mod-sec-title { font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--mc); letter-spacing: .3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.mod-ops { display: flex; gap: 6px; flex-shrink: 0; white-space: nowrap; }
+.mod-ops { display: flex; gap: 6px; flex-shrink: 0; white-space: nowrap; flex-wrap: nowrap; }
 .mod-block .kv { border-bottom: 1px dashed var(--line); grid-column: span 1; min-width: 0; }
 .mod-block .kv:last-child { border-bottom: none; }
 /* 板块标题行：拖拽手柄 + 折叠开关 + 标题 */
@@ -919,7 +919,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .sz-empty { padding: 10px 14px; color: var(--muted); font-size: var(--fs-sm); }
 .kv-mod {
   display: grid;
-  grid-template-columns: 96px 1fr 84px;
+  grid-template-columns: 96px minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
   padding: 10px 14px;
