@@ -322,6 +322,7 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: var(--fw-bold); col
 .prog { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .prog li { display: grid; grid-template-columns: 100px 1fr auto; gap: 10px; font-size: var(--fs-sm); color: var(--ink-2); padding: 9px 11px; background: var(--surface); border-radius: var(--radius-sm); border: 1px solid var(--line); }
 .prog-d { color: var(--muted); font-family: var(--font-ui); } .prog-c { color: var(--ink); font-family: var(--font-note); } .prog-a { color: var(--muted); white-space: nowrap; }
+.prog-note { margin-top: 4px; padding: 4px 8px; background: oklch(95% 0.02 250 / .5); border-left: 2px solid var(--mc); border-radius: 3px; color: var(--ink-2); font-size: var(--fs-xs); line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
 
 /* ============ 关联案件（独立区块 · 每个案件单独成行，与项目同维度） ============ */
 .cases-area { margin: var(--space-2xs) 0 var(--space-sm); }
