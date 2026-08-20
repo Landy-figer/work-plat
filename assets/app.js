@@ -687,6 +687,7 @@
         { key: 'creditors', label: '债权持有人（多项，点击展开债权流转明细）', type: 'creditors', wide: true },
         { key: 'debtor', label: '债务人', type: 'text' },
         { key: 'admin', label: '管理人', type: 'text' },
+        { key: 'claimNature', label: '债权性质', type: 'select', options: ['优先债权', '普通债权', '劣后债权', '共益债务', '其他'] },
         { key: 'claimAmount', label: '债权金额', type: 'text' },
         { key: 'bankruptcyStage', label: '破产阶段', type: 'select', options: ['申请', '受理', '重整', '和解', '清算', '结案'] }
       ] }
