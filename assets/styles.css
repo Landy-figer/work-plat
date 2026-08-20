@@ -323,6 +323,11 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: var(--fw-bold); col
 .prog li { display: grid; grid-template-columns: 100px 1fr auto; gap: 10px; font-size: var(--fs-sm); color: var(--ink-2); padding: 9px 11px; background: var(--surface); border-radius: var(--radius-sm); border: 1px solid var(--line); }
 .prog-d { color: var(--muted); font-family: var(--font-ui); } .prog-c { color: var(--ink); font-family: var(--font-note); } .prog-a { color: var(--muted); white-space: nowrap; }
 .prog-note { margin-top: 4px; padding: 4px 8px; background: oklch(95% 0.02 250 / .5); border-left: 2px solid var(--mc); border-radius: 3px; color: var(--ink-2); font-size: var(--fs-xs); line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+/* 对接人/经办人详情弹窗的"备注"栏（在基础信息与"沟通情况"之间） */
+.person-note { margin: 4px 11px 12px; padding: 10px 12px; background: oklch(97% 0.015 250 / .6); border: 1px dashed oklch(85% 0.02 250); border-radius: var(--radius-sm); }
+.person-note-label { display: block; font-size: var(--fs-xs); font-weight: var(--fw-bold); color: var(--mc); letter-spacing: .5px; margin-bottom: 6px; }
+.person-note textarea { width: 100%; min-height: 60px; padding: 8px 10px; font-family: var(--font-note); font-size: var(--fs-sm); color: var(--ink); background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--radius-xs); resize: vertical; line-height: 1.5; }
+.person-note textarea:focus { outline: none; border-color: var(--mc); box-shadow: 0 0 0 3px oklch(54% 0.075 250 / .12); }
 
 /* ============ 关联案件（独立区块 · 每个案件单独成行，与项目同维度） ============ */
 .cases-area { margin: var(--space-2xs) 0 var(--space-sm); }
