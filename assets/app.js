@@ -205,14 +205,7 @@
     return `<label class="fld ${opts.wide ? 'wide' : ''}"><span>${label}</span>${ctrl}</label>`;
   }
 
-  /* 组合框：从已有项目下拉选择，同时允许手动输入自定义内容 */
-  function fieldCombo(key, label, value, options, extra) {
-    const listId = 'combo_' + key;
-    const dl = `<datalist id="${listId}">${(options || []).map((o) => `<option value="${esc(o)}">`).join('')}</datalist>`;
-    return field(key, label, 'text', value, Object.assign({ list: listId }, extra || {})) + dl;
-  }
-
-  /* 层级项目选择：顶级项目为 optgroup，下属关联案件为缩进子选项；值为"projectId"或"projectId|caseId"
+  /* 层级项目选择：扁平结构——主项目加粗可选（仅出现一次），下属关联案件带 └ 缩进；值为"projectId"或"projectId|caseId"
    * fieldName 默认 'projectId'；对接人/经办人可用 'caseId' 等不同字段名以区分语义。 */
   function fieldProjectCase(label, value, wide, fieldName) {
     fieldName = fieldName || 'projectId';
@@ -220,16 +213,16 @@
     const projects = opts.filter((o) => !o.isCase);
     const casesByPid = {};
     opts.filter((o) => o.isCase).forEach((o) => { (casesByPid[o.projectId] = casesByPid[o.projectId] || []).push(o); });
-    let groupsHtml = '';
+    /* 扁平结构：主项目仅出现一次（加粗可选），其下属子项目紧随其后带 └ 缩进，避免重复主项目名 */
+    let optHtml = `<option value="">（不关联）</option>`;
     projects.forEach((p) => {
-      let inner = `<option value="${esc(p.id)}" ${p.id === value ? 'selected' : ''}>${esc(p.label)}</option>`;
+      optHtml += `<option class="opt-parent" value="${esc(p.id)}" ${p.id === value ? 'selected' : ''}>${esc(p.label)}</option>`;
       (casesByPid[p.id] || []).forEach((c) => {
         const cname = c.label.split(' › ').pop() || c.label;
-        inner += `<option value="${esc(c.id)}" ${c.id === value ? 'selected' : ''}>&nbsp;&nbsp;└ ${esc(cname)}</option>`;
+        optHtml += `<option value="${esc(c.id)}" ${c.id === value ? 'selected' : ''}>&nbsp;&nbsp;└ ${esc(cname)}</option>`;
       });
-      groupsHtml += `<optgroup label="${esc(p.label)}">${inner}</optgroup>`;
     });
-    return `<label class="fld ${wide ? 'wide' : ''}"><span>${label}</span><select data-field="${esc(fieldName)}"><option value="">（不关联）</option>${groupsHtml}</select></label>`;
+    return `<label class="fld ${wide ? 'wide' : ''}"><span>${label}</span><select data-field="${esc(fieldName)}">${optHtml}</select></label>`;
   }
 
   /* ===================== 查封与保全：多项编辑器（按类型自动计算查封/续封期限） =====================
