@@ -197,7 +197,7 @@
   }
   function field(name, label, type, val, opts) {    opts = opts || {}; val = val == null ? '' : val;
     let ctrl;
-    if (type === 'textarea') ctrl = `<textarea data-field="${name}" rows="${opts.rows || 3}" placeholder="${opts.ph || ''}">${esc(val)}</textarea>`;
+    if (type === 'textarea') ctrl = `<textarea data-field="${name}" rows="${opts.rows || 3}" placeholder="${opts.ph || ''}"${opts.maxlength ? ` maxlength="${opts.maxlength}"` : ''}>${esc(val)}</textarea>`;
     else if (type === 'select') ctrl = `<select data-field="${name}">${opts.options.map((o) => `<option value="${esc(o)}" ${o === val ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
     else if (type === 'date') ctrl = `<input data-field="${name}" type="date" value="${esc(val)}">`;
     else if (type === 'datetime') ctrl = `<input data-field="${name}" type="datetime-local" value="${esc(val)}">`;
@@ -210,6 +210,24 @@
     const listId = 'combo_' + key;
     const dl = `<datalist id="${listId}">${(options || []).map((o) => `<option value="${esc(o)}">`).join('')}</datalist>`;
     return field(key, label, 'text', value, Object.assign({ list: listId }, extra || {})) + dl;
+  }
+
+  /* 层级项目选择：顶级项目为 optgroup，下属关联案件为缩进子选项；值为"projectId"或"projectId|caseId" */
+  function fieldProjectCase(label, value, wide) {
+    const opts = S.projectCaseOptions();
+    const projects = opts.filter((o) => !o.isCase);
+    const casesByPid = {};
+    opts.filter((o) => o.isCase).forEach((o) => { (casesByPid[o.projectId] = casesByPid[o.projectId] || []).push(o); });
+    let groupsHtml = '';
+    projects.forEach((p) => {
+      let inner = `<option value="${esc(p.id)}" ${p.id === value ? 'selected' : ''}>${esc(p.label)}</option>`;
+      (casesByPid[p.id] || []).forEach((c) => {
+        const cname = c.label.split(' › ').pop() || c.label;
+        inner += `<option value="${esc(c.id)}" ${c.id === value ? 'selected' : ''}>&nbsp;&nbsp;└ ${esc(cname)}</option>`;
+      });
+      groupsHtml += `<optgroup label="${esc(p.label)}">${inner}</optgroup>`;
+    });
+    return `<label class="fld ${wide ? 'wide' : ''}"><span>${label}</span><select data-field="projectId"><option value="">（不关联）</option>${groupsHtml}</select></label>`;
   }
 
   /* ===================== 查封与保全：多项编辑器（按类型自动计算查封/续封期限） =====================
@@ -1219,7 +1237,7 @@
   function cliDetail(id) {
     const c = S.getClient(id); if (!c) return;
     openModal(c.name + '（对接人）', `<div class="detail"><div class="dl"><div><b>所属项目</b>${esc(c.project || '—')}</div><div><b>所属公司</b>${esc(c.company || '—')}</div><div><b>联系方式</b>${esc(c.contact || '—')}</div><div><b>地址</b>${esc(c.address || '—')}</div></div>
-      <h4>沟通情况</h4><ul class="prog">${(c.records || []).map((r) => `<li><span class="prog-d">${esc(r.date)}</span><span class="prog-c">${esc(r.content)}</span><span class="prog-a">${esc(r.by)}</span></li>`).join('') || '<li class="empty">暂无记录</li>'}</ul>
+      <h4>沟通情况</h4><ul class="prog">${(c.records || []).map((r) => `<li><span class="prog-d">${esc(r.date)}</span><span class="prog-c">${esc(r.content)}${r.note ? `<div class="prog-note">备注：${esc(r.note)}</div>` : ''}</span><span class="prog-a">${esc(r.by)}</span></li>`).join('') || '<li class="empty">暂无记录</li>'}</ul>
       <div class="ph"><button class="mini" data-act="cli-addrec" data-id="${c.id}">+ 沟通</button><button class="mini" data-act="cli-edit" data-id="${c.id}">编辑</button><button class="mini danger" data-act="cli-del" data-id="${c.id}">删除</button></div></div>`, null, { readonly: true });
   }
   function judForm(j) { j = j || {}; const projOpts = S.projectCaseOptions().map((o) => o.label); return field('name', '经办人', 'text', j.name) + fieldCombo('case', '所属案件（含子项目）', j.case, projOpts, { wide: true }) + field('role', '职务', 'select', j.role || '', { options: ['', '法官', '法官助理', '执行法官', '辅拍', '书记员'], wide: true }) + field('court', '法院', 'text', j.court) + field('contact', '联系方式', 'text', j.contact) + field('address', '地址', 'text', j.address, { wide: true }); }
@@ -1237,7 +1255,7 @@
   function judDetail(id) {
     const j = S.getJudge(id); if (!j) return;
     openModal(j.name + '（经办人）', `<div class="detail"><div class="dl"><div><b>所属案件</b>${esc(j.case || '—')}</div><div><b>职务</b>${esc(j.role || '—')}</div><div><b>法院</b>${esc(j.court || '—')}</div><div><b>联系方式</b>${esc(j.contact || '—')}</div><div><b>地址</b>${esc(j.address || '—')}</div></div>
-      <h4>沟通情况</h4><ul class="prog">${(j.records || []).map((r) => `<li><span class="prog-d">${esc(r.date)}</span><span class="prog-c">${esc(r.content)}</span><span class="prog-a">${esc(r.by)}</span></li>`).join('') || '<li class="empty">暂无记录</li>'}</ul>
+      <h4>沟通情况</h4><ul class="prog">${(j.records || []).map((r) => `<li><span class="prog-d">${esc(r.date)}</span><span class="prog-c">${esc(r.content)}${r.note ? `<div class="prog-note">备注：${esc(r.note)}</div>` : ''}</span><span class="prog-a">${esc(r.by)}</span></li>`).join('') || '<li class="empty">暂无记录</li>'}</ul>
       <div class="ph"><button class="mini" data-act="jud-addrec" data-id="${j.id}">+ 沟通</button><button class="mini" data-act="jud-edit" data-id="${j.id}">编辑</button><button class="mini danger" data-act="jud-del" data-id="${j.id}">删除</button></div></div>`, null, { readonly: true });
   }
 
@@ -1423,7 +1441,7 @@
       case 'evt-detail-close': state.evtDetailId = null; render(); break;
       case 'evt-empty': { const dt = el.dataset.date; if (!dt) break; const start = new Date(dt); const end = new Date(start.getTime() + 3600000); state.evtDetailId = null; bindEvtForm(null, { start: start.toISOString(), end: end.toISOString() }); break; }
       case 'evt-project': { const eid = el.dataset.evt; const ev = S.getManualEvent(eid); if (!ev) break; const r = evtResolve(el.value); S.saveManualEvent(Object.assign({}, ev, { projectId: r.projectId, caseId: r.caseId }), false); render(); break; }
-      case 'evt-open': { const k = el.dataset.kind, ref = el.dataset.ref; if ((k === 'task') && ref) { const t = S.getTask(ref); if (t) openModal('任务', `<div class="detail"><div class="dl"><div><b>任务</b>${esc(t.title)}</div><div><b>优先级</b>${t.priority}</div><div><b>截止</b>${fmtDT(t.dueDate)}</div><div><b>状态</b>${t.status}</div></div></div>`, null, { readonly: true }); } else if ((k === 'hearing' || k === 'contract' || k === 'renewal') && ref) { state.projOpenId = ref; navigate('projects'); } break; }
+      case 'evt-open': { const k = el.dataset.kind, ref = el.dataset.ref; if ((k === 'task') && ref) { const t = S.getTask(ref); if (t) { const p = S.getProject(t.projectId); const c = t.caseId && p ? (p.cases || []).find((x) => x.id === t.caseId) : null; const projLabel = p ? p.name : '—'; const caseLabel = c ? ' › ' + c.name : ''; openModal('任务', `<div class="detail"><div class="dl"><div><b>任务</b>${esc(t.title)}</div><div><b>关联项目</b>${esc(projLabel + caseLabel)}</div><div><b>截止</b>${fmtDT(t.dueDate)}</div><div><b>状态</b>${esc(t.status)}</div></div>${t.note ? `<div class="kv kv-mod"><span class="kv-k">备注</span><span class="kv-v" style="white-space:pre-wrap">${esc(t.note)}</span></div>` : ''}</div>`, null, { readonly: true }); } } else if ((k === 'hearing' || k === 'contract' || k === 'renewal') && ref) { state.projOpenId = ref; navigate('projects'); } break; }
       case 'evt-done': { const r = { eventId: el.dataset.evt || null, projectId: el.dataset.ref, caseId: el.dataset.case || null, kind: el.dataset.kind }; S.setScheduleDone(r, !S.isScheduleDone(r)); render(); break; }
       case 'evt-del': {
         const eid = el.dataset.evt; if (!eid) break;
@@ -1440,12 +1458,12 @@
       case 'cli-open': cliDetail(id); break;
       case 'cli-edit': bindCliForm(id); break;
       case 'cli-del': confirmModal('确认删除该对接人？', () => { S.deleteClient(id); render(); }); break;
-      case 'cli-addrec': openModal('添加沟通记录', field('content', '内容', 'textarea', ''), (v) => { S.addClientRecord(id, { content: v.content }); closeModal(); render(); }); break;
+      case 'cli-addrec': openModal('添加沟通记录', field('content', '内容', 'textarea', '', { wide: true }) + field('note', '备注', 'textarea', '', { rows: 2, ph: '补充说明（选填，200 字以内）', wide: true, maxlength: 200 }), (v) => { S.addClientRecord(id, { content: v.content, note: v.note || '' }); closeModal(); render(); }); break;
       case 'jud-new': bindJudForm(null); break;
       case 'jud-open': judDetail(id); break;
       case 'jud-edit': bindJudForm(id); break;
       case 'jud-del': confirmModal('确认删除该经办人？', () => { S.deleteJudge(id); render(); }); break;
-      case 'jud-addrec': openModal('添加沟通记录', field('content', '内容', 'textarea', ''), (v) => { S.addJudgeRecord(id, { content: v.content }); closeModal(); render(); }); break;
+      case 'jud-addrec': openModal('添加沟通记录', field('content', '内容', 'textarea', '', { wide: true }) + field('note', '备注', 'textarea', '', { rows: 2, ph: '补充说明（选填，200 字以内）', wide: true, maxlength: 200 }), (v) => { S.addJudgeRecord(id, { content: v.content, note: v.note || '' }); closeModal(); render(); }); break;
       case 'report-apply': applyReport(); break;
       case 'exp-sync': apiSync(); break;
       case 'exp-validate': apiValidate(); break;
@@ -1610,13 +1628,25 @@
 
   function taskForm(t) {
     t = t || {};
-    const opts = S.listProjects().map((p) => p.name);
+    const curVal = t.caseId ? (t.projectId + '|' + t.caseId) : (t.projectId || '');
     return field('title', '任务标题', 'text', t.title, { ph: '如：提交质证意见' }) +
-      field('projectId', '关联项目', 'select', (S.getProject(t.projectId) || {}).name || '', { options: [''].concat(opts) }) +
+      fieldProjectCase('关联项目（含子项目）', curVal) +
       field('dueDate', '截止日期', 'datetime', t.dueDate ? t.dueDate.slice(0, 16) : '') +
-      field('status', '状态', 'select', t.status || '待办', { options: ['待办', '待审阅', '已完成'] });
+      field('status', '状态', 'select', t.status || '待办', { options: ['待办', '待审阅', '已完成'] }) +
+      field('note', '备注', 'textarea', t.note || '', { rows: 4, ph: '任务的补充说明（500 字以内）', wide: true, maxlength: 500 });
   }
-  function bindTaskForm(id) { const t = id ? S.getTask(id) : null; openModal(id ? '编辑任务' : '新建任务', taskForm(t), (v) => { const pid = v.projectId ? (S.listProjects().find((p) => p.name === v.projectId) || {}).id : null; const data = { title: v.title, projectId: pid, dueDate: v.dueDate ? new Date(v.dueDate).toISOString() : null, status: v.status }; if (id) { data.id = id; S.saveTask(data, false); } else S.saveTask(data, true); closeModal(); render(); }); }
+  function bindTaskForm(id) {
+    const t = id ? S.getTask(id) : null;
+    openModal(id ? '编辑任务' : '新建任务', taskForm(t), (v) => {
+      const raw = v.projectId || '';
+      let projectId = null, caseId = null;
+      if (raw.indexOf('|') >= 0) { const parts = raw.split('|'); projectId = parts[0] || null; caseId = parts[1] || null; }
+      else { projectId = raw || null; }
+      const data = { title: v.title, projectId: projectId, caseId: caseId, dueDate: v.dueDate ? new Date(v.dueDate).toISOString() : null, status: v.status, note: (v.note || '').slice(0, 500) };
+      if (id) { data.id = id; S.saveTask(data, false); } else S.saveTask(data, true);
+      closeModal(); render();
+    });
+  }
 
   /* 任务状态快捷设置：待办 → 待审阅 → 已完成（主动置“已完成”会触发自动归档） */
   function openTaskStatus(id) {
