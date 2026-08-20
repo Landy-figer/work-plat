@@ -212,8 +212,10 @@
     return field(key, label, 'text', value, Object.assign({ list: listId }, extra || {})) + dl;
   }
 
-  /* 层级项目选择：顶级项目为 optgroup，下属关联案件为缩进子选项；值为"projectId"或"projectId|caseId" */
-  function fieldProjectCase(label, value, wide) {
+  /* 层级项目选择：顶级项目为 optgroup，下属关联案件为缩进子选项；值为"projectId"或"projectId|caseId"
+   * fieldName 默认 'projectId'；对接人/经办人可用 'caseId' 等不同字段名以区分语义。 */
+  function fieldProjectCase(label, value, wide, fieldName) {
+    fieldName = fieldName || 'projectId';
     const opts = S.projectCaseOptions();
     const projects = opts.filter((o) => !o.isCase);
     const casesByPid = {};
@@ -227,7 +229,7 @@
       });
       groupsHtml += `<optgroup label="${esc(p.label)}">${inner}</optgroup>`;
     });
-    return `<label class="fld ${wide ? 'wide' : ''}"><span>${label}</span><select data-field="projectId"><option value="">（不关联）</option>${groupsHtml}</select></label>`;
+    return `<label class="fld ${wide ? 'wide' : ''}"><span>${label}</span><select data-field="${esc(fieldName)}"><option value="">（不关联）</option>${groupsHtml}</select></label>`;
   }
 
   /* ===================== 查封与保全：多项编辑器（按类型自动计算查封/续封期限） =====================
@@ -1165,11 +1167,11 @@
   /* ===================== 对接人 / 经办人（拆分为两个独立界面） ===================== */
   function viewClients() {
     const q = (state.cliFilter.q || '').toLowerCase();
-    const list = S.listClients().filter((c) => !q || (c.name + (c.project || '') + (c.company || '') + (c.contact || '')).toLowerCase().indexOf(q) >= 0);
+    const list = S.listClients().filter((c) => !q || (c.name + resolveProjectCaseLabel(c.project) + (c.company || '') + (c.contact || '')).toLowerCase().indexOf(q) >= 0);
     const cards = list.length ? `<ul class="card-list">${list.map((c) => `<li class="card-pill card-pill--personnel" data-act="cli-open" data-id="${c.id}">
       <span class="drag-handle" data-drag-handle title="拖拽排序">⠿</span>
       <span class="cp-cell cp-name">${esc(c.name)}</span>
-      <span class="cp-cell cp-proj">${esc(c.project || '—')}${c.company ? '<span class="cp-sub">' + esc(c.company) + '</span>' : ''}</span>
+      <span class="cp-cell cp-proj">${esc(resolveProjectCaseLabel(c.project)) || '—'}${c.company ? '<span class="cp-sub">' + esc(c.company) + '</span>' : ''}</span>
       <span class="cp-cell cp-contact">${esc(c.contact || '—')}<span class="cp-sub">沟通 ${c.records ? c.records.length : 0} 条</span></span>
       <span class="cp-cell cp-addr">${esc(c.address || '—')}</span>
       <span class="cp-cell cp-act">
@@ -1191,12 +1193,12 @@
   }
   function viewJudges() {
     const q = (state.judFilter.q || '').toLowerCase();
-    const list = S.listJudges().filter((j) => !q || (j.name + (j.case || '') + (j.court || '') + (j.contact || '') + (j.role || '')).toLowerCase().indexOf(q) >= 0);
+    const list = S.listJudges().filter((j) => !q || (j.name + resolveProjectCaseLabel(j.case) + (j.court || '') + (j.contact || '') + (j.role || '')).toLowerCase().indexOf(q) >= 0);
     const cards = list.length ? `<ul class="card-list">${list.map((j) => `<li class="card-pill card-pill--personnel card-pill--judges" data-act="jud-open" data-id="${j.id}">
       <span class="drag-handle" data-drag-handle title="拖拽排序">⠿</span>
       <span class="cp-cell cp-name">${esc(j.name)}</span>
       <span class="cp-cell cp-role">${esc(j.role || '—')}</span>
-      <span class="cp-cell cp-proj">${esc(j.case || '—')}${j.court ? '<span class="cp-sub">' + esc(j.court) + '</span>' : ''}</span>
+      <span class="cp-cell cp-proj">${esc(resolveProjectCaseLabel(j.case)) || '—'}${j.court ? '<span class="cp-sub">' + esc(j.court) + '</span>' : ''}</span>
       <span class="cp-cell cp-contact">${esc(j.contact || '—')}<span class="cp-sub">沟通 ${j.records ? j.records.length : 0} 条</span></span>
       <span class="cp-cell cp-addr">${esc(j.address || '—')}</span>
       <span class="cp-cell cp-act">
@@ -1216,7 +1218,15 @@
     ${cards}
     </div>`;
   }
-  function cliForm(c) { c = c || {}; const projOpts = S.projectCaseOptions().map((o) => o.label); return field('name', '对接人', 'text', c.name) + fieldCombo('project', '所属项目（含子项目）', c.project, projOpts, { wide: true }) + field('company', '所属公司', 'text', c.company) + field('contact', '联系方式', 'text', c.contact) + field('address', '地址', 'text', c.address, { wide: true }); }
+  function cliForm(c) { c = c || {}; return field('name', '对接人', 'text', c.name) + fieldProjectCase('所属项目（含子项目）', c.project || '', true) + field('company', '所属公司', 'text', c.company) + field('contact', '联系方式', 'text', c.contact) + field('address', '地址', 'text', c.address, { wide: true }); }
+  /* 将对接人/经办人的 project/case 字段值解析为显示标签：值可能是 "p1" / "p1|c1" 复合 id，也可能是老数据的自由文本 */
+  function resolveProjectCaseLabel(val) {
+    if (!val) return '';
+    const opts = (S.projectCaseOptions ? S.projectCaseOptions() : []);
+    const found = opts.find((o) => o.id === val);
+    if (found) return found.label;
+    return val;
+  }
   /* 同类别人员重名校验：去空格、忽略大小写；excludeId 用于编辑时排除自身 */
   function personNameDup(list, name, excludeId) {
     const n = (name || '').trim().toLowerCase();
@@ -1236,11 +1246,11 @@
   }
   function cliDetail(id) {
     const c = S.getClient(id); if (!c) return;
-    openModal(c.name + '（对接人）', `<div class="detail"><div class="dl"><div><b>所属项目</b>${esc(c.project || '—')}</div><div><b>所属公司</b>${esc(c.company || '—')}</div><div><b>联系方式</b>${esc(c.contact || '—')}</div><div><b>地址</b>${esc(c.address || '—')}</div></div>
+    openModal(c.name + '（对接人）', `<div class="detail"><div class="dl"><div><b>所属项目</b>${esc(resolveProjectCaseLabel(c.project)) || '—'}</div><div><b>所属公司</b>${esc(c.company || '—')}</div><div><b>联系方式</b>${esc(c.contact || '—')}</div><div><b>地址</b>${esc(c.address || '—')}</div></div>
       <h4>沟通情况</h4><ul class="prog">${(c.records || []).map((r) => `<li><span class="prog-d">${esc(r.date)}</span><span class="prog-c">${esc(r.content)}${r.note ? `<div class="prog-note">备注：${esc(r.note)}</div>` : ''}</span><span class="prog-a">${esc(r.by)}</span></li>`).join('') || '<li class="empty">暂无记录</li>'}</ul>
       <div class="ph"><button class="mini" data-act="cli-addrec" data-id="${c.id}">+ 沟通</button><button class="mini" data-act="cli-edit" data-id="${c.id}">编辑</button><button class="mini danger" data-act="cli-del" data-id="${c.id}">删除</button></div></div>`, null, { readonly: true });
   }
-  function judForm(j) { j = j || {}; const projOpts = S.projectCaseOptions().map((o) => o.label); return field('name', '经办人', 'text', j.name) + fieldCombo('case', '所属案件（含子项目）', j.case, projOpts, { wide: true }) + field('role', '职务', 'select', j.role || '', { options: ['', '法官', '法官助理', '执行法官', '辅拍', '书记员'], wide: true }) + field('court', '法院', 'text', j.court) + field('contact', '联系方式', 'text', j.contact) + field('address', '地址', 'text', j.address, { wide: true }); }
+  function judForm(j) { j = j || {}; return field('name', '经办人', 'text', j.name) + fieldProjectCase('所属案件（含子项目）', j.case || '', true) + field('role', '职务', 'select', j.role || '', { options: ['', '法官', '法官助理', '执行法官', '辅拍', '书记员'], wide: true }) + field('court', '法院', 'text', j.court) + field('contact', '联系方式', 'text', j.contact) + field('address', '地址', 'text', j.address, { wide: true }); }
   function bindJudForm(id) {
     const j = id ? S.getJudge(id) : null;
     openModal(id ? '编辑经办人' : '新建经办人', judForm(j), (v) => {
@@ -1254,7 +1264,7 @@
   }
   function judDetail(id) {
     const j = S.getJudge(id); if (!j) return;
-    openModal(j.name + '（经办人）', `<div class="detail"><div class="dl"><div><b>所属案件</b>${esc(j.case || '—')}</div><div><b>职务</b>${esc(j.role || '—')}</div><div><b>法院</b>${esc(j.court || '—')}</div><div><b>联系方式</b>${esc(j.contact || '—')}</div><div><b>地址</b>${esc(j.address || '—')}</div></div>
+    openModal(j.name + '（经办人）', `<div class="detail"><div class="dl"><div><b>所属案件</b>${esc(resolveProjectCaseLabel(j.case)) || '—'}</div><div><b>职务</b>${esc(j.role || '—')}</div><div><b>法院</b>${esc(j.court || '—')}</div><div><b>联系方式</b>${esc(j.contact || '—')}</div><div><b>地址</b>${esc(j.address || '—')}</div></div>
       <h4>沟通情况</h4><ul class="prog">${(j.records || []).map((r) => `<li><span class="prog-d">${esc(r.date)}</span><span class="prog-c">${esc(r.content)}${r.note ? `<div class="prog-note">备注：${esc(r.note)}</div>` : ''}</span><span class="prog-a">${esc(r.by)}</span></li>`).join('') || '<li class="empty">暂无记录</li>'}</ul>
       <div class="ph"><button class="mini" data-act="jud-addrec" data-id="${j.id}">+ 沟通</button><button class="mini" data-act="jud-edit" data-id="${j.id}">编辑</button><button class="mini danger" data-act="jud-del" data-id="${j.id}">删除</button></div></div>`, null, { readonly: true });
   }
