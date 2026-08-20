@@ -428,9 +428,14 @@
     listClients() { return DB.clients.slice(); },
     getClient(id) { return find(DB.clients, id); },
     saveClient(c, isNew) {
-      if (isNew) { c.id = uid('cli'); c.records = c.records || []; DB.clients.push(c); audit('新建客户', c.name); }
+      if (isNew) { c.id = uid('cli'); c.records = c.records || []; c.note = c.note || ''; DB.clients.push(c); audit('新建客户', c.name); }
       else { const o = find(DB.clients, c.id); if (!o) return; Object.assign(o, c); audit('更新客户', c.name); }
       persist(); return c;
+    },
+    setClientNote(id, note) {
+      const o = find(DB.clients, id); if (!o) return; o.note = note || '';
+      audit('客户备注', o.name);
+      persist();
     },
     addClientRecord(id, rec) {
       const o = find(DB.clients, id); if (!o) return;
@@ -449,9 +454,14 @@
     listJudges() { return DB.judges.slice(); },
     getJudge(id) { return find(DB.judges, id); },
     saveJudge(j, isNew) {
-      if (isNew) { j.id = uid('jud'); j.records = j.records || []; DB.judges.push(j); audit('新建经办法官', j.name); }
+      if (isNew) { j.id = uid('jud'); j.records = j.records || []; j.note = j.note || ''; DB.judges.push(j); audit('新建经办法官', j.name); }
       else { const o = find(DB.judges, j.id); if (!o) return; Object.assign(o, j); audit('更新经办法官', j.name); }
       persist(); return j;
+    },
+    setJudgeNote(id, note) {
+      const o = find(DB.judges, id); if (!o) return; o.note = note || '';
+      audit('法官备注', o.name);
+      persist();
     },
     addJudgeRecord(id, rec) {
       const o = find(DB.judges, id); if (!o) return;
