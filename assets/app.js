@@ -90,6 +90,9 @@
     saveBtn.style.display = opts.readonly ? 'none' : '';
     saveBtn.onclick = () => { if (onSave) onSave(collectForm()); };
     $('#modal-cancel').onclick = closeModal;
+    /* 模态框内的"备注"textarea：失焦自动保存（bindView 只绑定主视图，模态内需单独处理） */
+    const cliNote = $('#modal-body [data-act="cli-savenote"]'); if (cliNote) cliNote.onblur = (e) => { S.setClientNote(e.target.dataset.id, e.target.value || ''); toast('备注已保存', 'ok'); };
+    const judNote = $('#modal-body [data-act="jud-savenote"]'); if (judNote) judNote.onblur = (e) => { S.setJudgeNote(e.target.dataset.id, e.target.value || ''); toast('备注已保存', 'ok'); };
   }
   function closeModal() { $('#modal').classList.remove('open'); }
   /* 应用内确认弹窗：替代原生 confirm()，避免部分浏览器/内嵌环境拦截模态对话框导致删除等操作“静默失效” */
@@ -1211,7 +1214,7 @@
     ${cards}
     </div>`;
   }
-  function cliForm(c) { c = c || {}; return field('name', '对接人', 'text', c.name) + fieldProjectCase('所属项目（含子项目）', c.project || '', true) + field('company', '所属公司', 'text', c.company) + field('contact', '联系方式', 'text', c.contact) + field('address', '地址', 'text', c.address, { wide: true }); }
+  function cliForm(c) { c = c || {}; return field('name', '对接人', 'text', c.name) + fieldProjectCase('所属项目（含子项目）', c.project || '', true) + field('company', '所属公司', 'text', c.company) + field('contact', '联系方式', 'text', c.contact) + field('address', '地址', 'text', c.address, { wide: true }) + field('note', '备注', 'textarea', c.note || '', { rows: 3, ph: '该对接人的补充说明（500 字以内）', wide: true, maxlength: 500 }); }
   /* 将对接人/经办人的 project/case 字段值解析为显示标签：值可能是 "p1" / "p1|c1" 复合 id，也可能是老数据的自由文本 */
   function resolveProjectCaseLabel(val) {
     if (!val) return '';
@@ -1240,10 +1243,11 @@
   function cliDetail(id) {
     const c = S.getClient(id); if (!c) return;
     openModal(c.name + '（对接人）', `<div class="detail"><div class="dl"><div><b>所属项目</b>${esc(resolveProjectCaseLabel(c.project)) || '—'}</div><div><b>所属公司</b>${esc(c.company || '—')}</div><div><b>联系方式</b>${esc(c.contact || '—')}</div><div><b>地址</b>${esc(c.address || '—')}</div></div>
+      <div class="person-note"><label class="person-note-label">备注</label><textarea data-act="cli-savenote" data-id="${c.id}" maxlength="500" placeholder="记录与该对接人相关的补充说明（如背景、偏好、注意事项等）">${esc(c.note || '')}</textarea></div>
       <h4>沟通情况</h4><ul class="prog">${(c.records || []).map((r) => `<li><span class="prog-d">${esc(r.date)}</span><span class="prog-c">${esc(r.content)}${r.note ? `<div class="prog-note">备注：${esc(r.note)}</div>` : ''}</span><span class="prog-a">${esc(r.by)}</span></li>`).join('') || '<li class="empty">暂无记录</li>'}</ul>
       <div class="ph"><button class="mini" data-act="cli-addrec" data-id="${c.id}">+ 沟通</button><button class="mini" data-act="cli-edit" data-id="${c.id}">编辑</button><button class="mini danger" data-act="cli-del" data-id="${c.id}">删除</button></div></div>`, null, { readonly: true });
   }
-  function judForm(j) { j = j || {}; return field('name', '经办人', 'text', j.name) + fieldProjectCase('所属案件（含子项目）', j.case || '', true) + field('role', '职务', 'select', j.role || '', { options: ['', '法官', '法官助理', '执行法官', '辅拍', '书记员'], wide: true }) + field('court', '法院', 'text', j.court) + field('contact', '联系方式', 'text', j.contact) + field('address', '地址', 'text', j.address, { wide: true }); }
+  function judForm(j) { j = j || {}; return field('name', '经办人', 'text', j.name) + fieldProjectCase('所属案件（含子项目）', j.case || '', true) + field('role', '职务', 'select', j.role || '', { options: ['', '法官', '法官助理', '执行法官', '辅拍', '书记员'], wide: true }) + field('court', '法院', 'text', j.court) + field('contact', '联系方式', 'text', j.contact) + field('address', '地址', 'text', j.address, { wide: true }) + field('note', '备注', 'textarea', j.note || '', { rows: 3, ph: '该经办人的补充说明（500 字以内）', wide: true, maxlength: 500 }); }
   function bindJudForm(id) {
     const j = id ? S.getJudge(id) : null;
     openModal(id ? '编辑经办人' : '新建经办人', judForm(j), (v) => {
@@ -1258,6 +1262,7 @@
   function judDetail(id) {
     const j = S.getJudge(id); if (!j) return;
     openModal(j.name + '（经办人）', `<div class="detail"><div class="dl"><div><b>所属案件</b>${esc(resolveProjectCaseLabel(j.case)) || '—'}</div><div><b>职务</b>${esc(j.role || '—')}</div><div><b>法院</b>${esc(j.court || '—')}</div><div><b>联系方式</b>${esc(j.contact || '—')}</div><div><b>地址</b>${esc(j.address || '—')}</div></div>
+      <div class="person-note"><label class="person-note-label">备注</label><textarea data-act="jud-savenote" data-id="${j.id}" maxlength="500" placeholder="记录与该经办人相关的补充说明（如背景、偏好、注意事项等）">${esc(j.note || '')}</textarea></div>
       <h4>沟通情况</h4><ul class="prog">${(j.records || []).map((r) => `<li><span class="prog-d">${esc(r.date)}</span><span class="prog-c">${esc(r.content)}${r.note ? `<div class="prog-note">备注：${esc(r.note)}</div>` : ''}</span><span class="prog-a">${esc(r.by)}</span></li>`).join('') || '<li class="empty">暂无记录</li>'}</ul>
       <div class="ph"><button class="mini" data-act="jud-addrec" data-id="${j.id}">+ 沟通</button><button class="mini" data-act="jud-edit" data-id="${j.id}">编辑</button><button class="mini danger" data-act="jud-del" data-id="${j.id}">删除</button></div></div>`, null, { readonly: true });
   }
@@ -1785,6 +1790,9 @@
     const pc = $('[data-act="proj-cause"]'); if (pc) pc.onchange = (e) => { state.projFilter.cause = e.target.value; render(); };
     const pt = $('[data-act="proj-tag"]'); if (pt) pt.onchange = (e) => { state.projFilter.tag = e.target.value; render(); };
     const imp = $('#imp-file'); if (imp) imp.onchange = (e) => { const f = e.target.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => { try { S.importJSON(rd.result); alert('导入成功'); render(); } catch (err) { alert('导入失败：' + err.message); } }; rd.readAsText(f); };
+    /* 对接人/经办人详情弹窗的"备注"：失焦自动保存（轻量更新，不重渲整页以免关闭模态） */
+    const cliNote = $('[data-act="cli-savenote"]'); if (cliNote) cliNote.onblur = (e) => { S.setClientNote(e.target.dataset.id, e.target.value || ''); toast('备注已保存', 'ok'); };
+    const judNote = $('[data-act="jud-savenote"]'); if (judNote) judNote.onblur = (e) => { S.setJudgeNote(e.target.dataset.id, e.target.value || ''); toast('备注已保存', 'ok'); };
     // 智能汇报：输入即解析预览 + 句末自动应用
     const ta = $('#report-text');
     if (ta) {
