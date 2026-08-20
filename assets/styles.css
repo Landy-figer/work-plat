@@ -551,6 +551,8 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: var(--fw-bold); col
 .sm-hint { padding: 0 14px 12px; font-size: var(--fs-xs); color: var(--sub); min-height: 0; }
 .sm-hint--err { color: #d23f3f; }
 .sm-restore { padding: 6px 16px; }
+/* 层级项目选择器：主项目选项加粗，与 └ 缩进的子项目区分（Chromium/Edge 支持 option 字体样式） */
+select option.opt-parent { font-weight: 700; color: var(--ink); }
 /* 板块管理入口徽标：提示可恢复的板块数量 */
 .sec-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px; background: #d23f3f; color: #fff; font-size: 10px; font-weight: var(--fw-bold); line-height: 1; vertical-align: middle; }
 /* 轻量 toast 反馈 */
