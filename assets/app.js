@@ -1247,7 +1247,7 @@
       const nm = (v.name || '').trim();
       if (!nm) { toast('请填写对接人姓名', 'err'); return; }
       if (personNameDup(S.listClients(), nm, id)) { toast('对接人「' + nm + '」已存在，请勿重复添加', 'err'); return; }
-      const data = { name: v.name, project: v.project, company: v.company, contact: v.contact, address: v.address };
+      const data = { name: v.name, project: v.projectId || '', company: v.company, contact: v.contact, address: v.address };
       if (id) { data.id = id; S.saveClient(data, false); } else S.saveClient(data, true);
       closeModal(); render();
     });
@@ -1266,7 +1266,7 @@
       const nm = (v.name || '').trim();
       if (!nm) { toast('请填写经办人姓名', 'err'); return; }
       if (personNameDup(S.listJudges(), nm, id)) { toast('经办人「' + nm + '」已存在，请勿重复添加', 'err'); return; }
-      const data = { name: v.name, case: v.case, role: v.role, court: v.court, contact: v.contact, address: v.address };
+      const data = { name: v.name, case: v.projectId || '', role: v.role, court: v.court, contact: v.contact, address: v.address };
       if (id) { data.id = id; S.saveJudge(data, false); } else S.saveJudge(data, true);
       closeModal(); render();
     });
