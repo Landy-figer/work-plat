@@ -265,6 +265,8 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: var(--fw-bold); col
 .card-list-head--judges { grid-template-columns: var(--grip) 1.1fr 0.9fr 1.7fr 1.3fr 1.5fr 110px; }
 .card-pill--judges { grid-template-columns: var(--grip) 1.1fr 0.9fr 1.7fr 1.3fr 1.5fr 110px; }
 .card-pill--judges .cp-cell.cp-role { color: var(--ink-2); font-size: var(--fs-sm); overflow: hidden; }
+/* 部门（5 列：拖拽手柄/部门/所属单位/联系方式/操作），与人员卡片同构，无"地址"列 */
+.card-list-head--departments, .card-pill--departments { grid-template-columns: var(--grip) 1.1fr 1.7fr 1.3fr 110px; }
 .card-pill--judges .cp-cell.cp-role, .card-pill--judges .cp-cell.cp-name { font-size: var(--fs-md); }
 /* 列表横向滚动容器：窄屏下保持表头与行同宽对齐，超宽时横向滚动而非挤压列宽 */
 .tbl-scroll { overflow-x: auto; padding-bottom: 2px; }
@@ -669,6 +671,10 @@ select option.opt-parent { font-weight: 700; color: var(--ink); }
   .card-list-head--personnel:not(.card-list-head--judges) > span:nth-child(4), .card-list-head--personnel:not(.card-list-head--judges) > span:nth-child(5),
   .card-pill--personnel:not(.card-pill--judges) .cp-contact, .card-pill--personnel:not(.card-pill--judges) .cp-addr { display: none; }
   .card-list-head--personnel:not(.card-list-head--judges) > span:nth-child(3), .card-pill--personnel:not(.card-pill--judges) .cp-cell.cp-proj { overflow: hidden; }
+  /* 部门（无地址）：窄屏隐藏"联系方式"列，保留 部门/所属单位/操作 */
+  .card-list-head--departments, .card-pill--departments { grid-template-columns: var(--grip) 1fr 1.3fr auto; }
+  .card-list-head--departments > span:nth-child(4), .card-pill--departments .cp-contact { display: none; }
+  .card-pill--departments .cp-cell.cp-proj { overflow: hidden; }
   /* 经办人（7 列）在窄屏保持列结构，允许横向滚动查看 */
   .card-list-head--judges, .card-pill--judges { grid-template-columns: var(--grip) 1.1fr 0.9fr 1.7fr 1.3fr 1.5fr 96px; font-size: var(--fs-xs); }
 }
