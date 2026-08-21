@@ -131,11 +131,13 @@
               // 密文：仅当本标签页已解锁时才解密同步
               if (LB.vault.isUnlocked() && LB.vault.key) {
                 DB = await LB.vault.unseal(raw);
+                if (DB) { DB.departments = DB.departments || []; DB.events = Array.isArray(DB.events) ? DB.events : []; DB.clients = DB.clients || []; DB.judges = DB.judges || []; }
                 DB.meta.lastSync = new Date().toISOString();
                 if (LB.onSync) LB.onSync();
               }
             } else {
               DB = JSON.parse(raw);
+              if (DB) { DB.departments = DB.departments || []; DB.events = Array.isArray(DB.events) ? DB.events : []; DB.clients = DB.clients || []; DB.judges = DB.judges || []; }
               DB.meta.lastSync = new Date().toISOString();
               if (LB.onSync) LB.onSync();
             }
@@ -478,16 +480,17 @@
     },
 
     /* == 部门 == */
-    listDepartments() { return DB.departments.slice(); },
-    getDepartment(id) { return find(DB.departments, id); },
+    listDepartments() { return (DB.departments || []).slice(); },
+    getDepartment(id) { return find(DB.departments || [], id); },
     saveDepartment(d, isNew) {
+      if (!Array.isArray(DB.departments)) DB.departments = [];
       if (isNew) { d.id = uid('dep'); DB.departments.push(d); audit('新建部门', d.name); }
       else { const o = find(DB.departments, d.id); if (!o) return; Object.assign(o, d); audit('更新部门', d.name); }
       persist(); return d;
     },
     /* 部门列表按"所属单位 → 部门名"升序排列（同一单位的部门聚在一起） */
     listDepartmentsSorted() {
-      return DB.departments.slice().sort((a, b) => {
+      return (DB.departments || []).slice().sort((a, b) => {
         const oa = (a.org || '').trim(), ob = (b.org || '').trim();
         if (oa !== ob) return oa < ob ? -1 : oa > ob ? 1 : 0;
         const na = (a.name || '').trim(), nb = (b.name || '').trim();
@@ -496,6 +499,7 @@
       });
     },
     deleteDepartment(id) {
+      if (!Array.isArray(DB.departments)) return;
       const o = find(DB.departments, id); if (!o) return;
       DB.departments = DB.departments.filter((x) => x.id !== id);
       audit('删除部门', o.name);
@@ -676,6 +680,7 @@
       if (!parsed.projects) throw new Error('无效的数据文件');
       parsed.clients = parsed.clients || [];
       parsed.judges = parsed.judges || [];
+      parsed.departments = parsed.departments || [];
       parsed.events = Array.isArray(parsed.events) ? parsed.events : [];
       delete parsed.lawItems;
       normalizeEvents(parsed.events);
