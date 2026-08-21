@@ -56,13 +56,19 @@
     /* 同步浏览器标签页标题：与页面内 H1 一致，格式 `WORK-Plat · 页面标题` */
     if (document.title !== ('WORK-Plat · ' + nv.title)) document.title = 'WORK-Plat · ' + nv.title;
     const view = $('#view'); view.style.setProperty('--mc', NAVC[state.view] || NAVC.dashboard);
-    if (state.view === 'dashboard') view.innerHTML = viewDashboard();
-    else if (state.view === 'calendar') view.innerHTML = viewCalendar();
-    else if (state.view === 'projects') view.innerHTML = viewProjects();
-    else if (state.view === 'clients') view.innerHTML = viewClients();
-    else if (state.view === 'judges') view.innerHTML = viewJudges();
-    else if (state.view === 'departments') view.innerHTML = viewDepartments();
-    else if (state.view === 'export') view.innerHTML = viewExport();
+    /* 视图渲染加兜底：单视图异常不得中断 bindView（否则 #nav/#view 新元素全部失去事件绑定 → 页面卡死） */
+    try {
+      if (state.view === 'dashboard') view.innerHTML = viewDashboard();
+      else if (state.view === 'calendar') view.innerHTML = viewCalendar();
+      else if (state.view === 'projects') view.innerHTML = viewProjects();
+      else if (state.view === 'clients') view.innerHTML = viewClients();
+      else if (state.view === 'judges') view.innerHTML = viewJudges();
+      else if (state.view === 'departments') view.innerHTML = viewDepartments();
+      else if (state.view === 'export') view.innerHTML = viewExport();
+    } catch (err) {
+      console.error('[render] 视图渲染失败:', err);
+      view.innerHTML = `<div class="empty"><p>视图加载失败：${esc(err && err.message ? err.message : String(err))}</p><p class="hint">可尝试刷新页面；若持续出现请联系维护者。</p></div>`;
+    }
     /* 仅当视图真正切换时才触发入场编排，避免状态更新（勾选/筛选/增删）时整页重放动画 */
     if (state.view !== lastView) {
       view.classList.remove('is-entering');
@@ -1280,7 +1286,6 @@
     const list = q ? all.filter((d) => (d.name + (d.org || '') + (d.contact || '') + (d.address || '')).toLowerCase().indexOf(q) >= 0) : all;
     /* 在按 org 分组的卡片之间插入"单位分组小标题"（同一单位的部门聚拢） */
     const cards = list.length ? list.map((d) => `<li class="card-pill card-pill--personnel" data-act="dept-open" data-id="${d.id}">
-      <span class="drag-handle" data-drag-handle title="拖拽排序">⠿</span>
       <span class="cp-cell cp-name">${esc(d.name)}</span>
       <span class="cp-cell cp-proj">${esc(d.org || '—')}${d.address ? '<span class="cp-sub">' + esc(d.address) + '</span>' : ''}</span>
       <span class="cp-cell cp-contact">${esc(d.contact || '—')}</span>
@@ -1810,13 +1815,15 @@
     const hasFilter = !!(f.q || f.status || f.cause || f.tag);
     const pl = $('.proj-list');
     if (pl && !hasFilter) enableSortable(pl, { itemSelector: '.proj-row', getKey: (el) => el.dataset.id, onEnd: (ids) => S.reorderProjects(ids) });
-    // 人员管理：对接人 / 经办人 两个列表分别独立重排
+    // 人员管理：对接人 / 经办人 两个列表分别独立重排（部门按所属单位自动排序，不参与手动拖拽）
     $$('.card-list').forEach((ul) => {
-      if (!ul.querySelector('.card-pill--personnel')) return;
+      const first = ul.querySelector('.card-pill--personnel');
+      if (!first) return;
+      if (first.dataset.act === 'dept-open') return; /* 部门：自动按单位聚类，禁止手动重排 */
       enableSortable(ul, {
         itemSelector: '.card-pill--personnel',
         getKey: (el) => el.dataset.id,
-        onEnd: (ids) => { const first = ul.querySelector('.card-pill--personnel'); if (first && first.dataset.act === 'cli-open') S.reorderClients(ids); else S.reorderJudges(ids); }
+        onEnd: (ids) => { if (first.dataset.act === 'cli-open') S.reorderClients(ids); else S.reorderJudges(ids); }
       });
     });
     // 任务管理：仅工作台面板内的任务列表
