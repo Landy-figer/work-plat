@@ -28,7 +28,7 @@
 
   /* 保险库锁定时使用的空壳，避免用任何数据覆盖未解密的原文 */
   function emptyDb() {
-    return { projects: [], tasks: [], clients: [], judges: [], events: [], audit: [], meta: { lastSync: null, currentUser: '我' } };
+    return { projects: [], tasks: [], clients: [], judges: [], departments: [], events: [], audit: [], meta: { lastSync: null, currentUser: '我' } };
   }
 
   /* 防御性归一化：统一在 load / importJSON / unsealLoad 中调用，确保数组字段完整 */
@@ -86,6 +86,7 @@
         if (parsed && parsed.projects) {
           parsed.clients = parsed.clients || [];
           parsed.judges = parsed.judges || [];
+          parsed.departments = parsed.departments || [];
           parsed.events = Array.isArray(parsed.events) ? parsed.events : [];
           delete parsed.lawItems;
           normalizeEvents(parsed.events);
@@ -473,6 +474,31 @@
       const o = find(DB.judges, id); if (!o) return;
       DB.judges = DB.judges.filter((x) => x.id !== id);
       audit('删除经办法官', o.name);
+      persist();
+    },
+
+    /* == 部门 == */
+    listDepartments() { return DB.departments.slice(); },
+    getDepartment(id) { return find(DB.departments, id); },
+    saveDepartment(d, isNew) {
+      if (isNew) { d.id = uid('dep'); DB.departments.push(d); audit('新建部门', d.name); }
+      else { const o = find(DB.departments, d.id); if (!o) return; Object.assign(o, d); audit('更新部门', d.name); }
+      persist(); return d;
+    },
+    /* 部门列表按"所属单位 → 部门名"升序排列（同一单位的部门聚在一起） */
+    listDepartmentsSorted() {
+      return DB.departments.slice().sort((a, b) => {
+        const oa = (a.org || '').trim(), ob = (b.org || '').trim();
+        if (oa !== ob) return oa < ob ? -1 : oa > ob ? 1 : 0;
+        const na = (a.name || '').trim(), nb = (b.name || '').trim();
+        if (na !== nb) return na < nb ? -1 : na > nb ? 1 : 0;
+        return 0;
+      });
+    },
+    deleteDepartment(id) {
+      const o = find(DB.departments, id); if (!o) return;
+      DB.departments = DB.departments.filter((x) => x.id !== id);
+      audit('删除部门', o.name);
       persist();
     },
 
