@@ -20,7 +20,7 @@
 
   const state = {
     view: 'dashboard', calMode: 'week', calDate: new Date(), evtDetailId: null,
-    projFilter: { q: '', status: '', cause: '', tag: '' }, projOpenId: null, openCases: {}, openCreditors: {}, cliFilter: { q: '' }, judFilter: { q: '' },
+    projFilter: { q: '', status: '', cause: '', tag: '' }, projOpenId: null, openCases: {}, openCreditors: {}, cliFilter: { q: '' }, judFilter: { q: '' }, deptFilter: { q: '' },
     reportPreview: null, lastAppliedRaw: '', rpStatus: '', lawQ: '', validateHtml: ''
   };
   let rpTimer = null;
@@ -32,6 +32,7 @@
     { id: 'projects', label: '项目管理', icon: '▤', c: 'oklch(61% 0.058 45)', title: '项目管理' },
     { id: 'clients', label: '对接人', icon: '☺', c: 'oklch(69% 0.058 80)', title: '对接人' },
     { id: 'judges', label: '经办人', icon: '⚖', c: 'oklch(64% 0.060 70)', title: '经办人' },
+    { id: 'departments', label: '部门', icon: '🏢', c: 'oklch(58% 0.050 195)', title: '部门' },
     { id: 'export', label: '数据导出', icon: '⇩', c: 'oklch(62% 0.048 200)', title: '数据导出' }
   ];
   const NAVC = { dashboard: 'oklch(62% 0.052 240)', calendar: 'oklch(59% 0.050 155)', projects: 'oklch(61% 0.058 45)', clients: 'oklch(69% 0.058 80)', judges: 'oklch(64% 0.060 70)', export: 'oklch(62% 0.048 200)' };
@@ -60,6 +61,7 @@
     else if (state.view === 'projects') view.innerHTML = viewProjects();
     else if (state.view === 'clients') view.innerHTML = viewClients();
     else if (state.view === 'judges') view.innerHTML = viewJudges();
+    else if (state.view === 'departments') view.innerHTML = viewDepartments();
     else if (state.view === 'export') view.innerHTML = viewExport();
     /* 仅当视图真正切换时才触发入场编排，避免状态更新（勾选/筛选/增删）时整页重放动画 */
     if (state.view !== lastView) {
@@ -487,9 +489,21 @@
     const projName = e.projectId ? (S.getProject(e.projectId) || {}).name || '' : '';
     let projField;
     if (isManual) {
-      const opts = ['（不关联项目）'].concat(S.projectCaseOptions().map((o) => o.label));
-      const cur = evtCurLabel(e);
-      projField = `<div class="evt-detail-row"><label>所属项目</label><select data-act="evt-project" data-evt="${esc(e.id)}">${opts.map((o) => `<option ${o === cur ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></div>`;
+      /* 与弹窗统一：├ 缩进、主项目不重复，value 用 projectId 或 projectId|caseId 复合 id */
+      const curVal = e.caseId ? (e.projectId + '|' + e.caseId) : (e.projectId || '');
+      const opts = S.projectCaseOptions();
+      const projects = opts.filter((o) => !o.isCase);
+      const casesByPid = {};
+      opts.filter((o) => o.isCase).forEach((o) => { (casesByPid[o.projectId] = casesByPid[o.projectId] || []).push(o); });
+      let selHtml = '<option value="">（不关联项目）</option>';
+      projects.forEach((p) => {
+        selHtml += `<option value="${esc(p.id)}" ${p.id === curVal ? 'selected' : ''}>${esc(p.label)}</option>`;
+        (casesByPid[p.id] || []).forEach((c) => {
+          const cname = c.label.split(' › ').pop() || c.label;
+          selHtml += `<option value="${esc(c.id)}" ${c.id === curVal ? 'selected' : ''}>&nbsp;&nbsp;└ ${esc(cname)}</option>`;
+        });
+      });
+      projField = `<div class="evt-detail-row"><label>所属项目</label><select data-act="evt-project" data-evt="${esc(e.id)}">${selHtml}</select></div>`;
     } else {
       projField = `<div class="evt-detail-row"><label>所属项目</label><span class="evt-detail-val">${esc(projName || '—')}</span></div>`;
     }
@@ -582,39 +596,24 @@
     return out;
   }
 
-  /* 手动日程的所属项目/子项目解析：选项标签 → {projectId, caseId}；以及反向回显当前标签。
-   * 关键：子项目（关联案件）选项的 id 形如 "pid|cid"，含 projectId/caseId；选中子项目时必须同时保存
-   * caseId，否则回显时会回落到大项目（此前子项目"选不上"的根因）。 */
-  function evtOptByLabel(label) { return S.projectCaseOptions().find((o) => o.label === label) || null; }
-  function evtCurLabel(base) {
-    if (!base || !base.projectId) return '';
-    const o = S.projectCaseOptions().find((x) => base.caseId
-      ? (x.isCase && x.projectId === base.projectId && x.caseId === base.caseId)
-      : (!x.isCase && x.id === base.projectId));
-    return o ? o.label : '';
-  }
-  function evtResolve(label) {
-    if (!label || label === '（不关联项目）') return { projectId: null, caseId: null };
-    const o = evtOptByLabel(label);
-    if (!o) return { projectId: null, caseId: null };
-    return o.isCase ? { projectId: o.projectId, caseId: o.caseId } : { projectId: o.id, caseId: null };
-  }
-
-  /* 新建 / 编辑手动日程：所属项目下拉含子项目（需求 5），保存时按标签反查 projectId/caseId（需求 2 增改）
+  /* 新建 / 编辑手动日程：所属项目下拉使用 projectId/projectId|caseId 复合 id（与任务/对接人/经办人统一）。
    * draft 可携带 start/end（点击网格空白处新建时预填时间）。 */
   function bindEvtForm(id, draft) {
     const e = id ? S.getManualEvent(id) : null;
     const base = Object.assign({}, e || {}, draft || {});
-    const opts = ['（不关联项目）'].concat(S.projectCaseOptions().map((o) => o.label));
-    const curLabel = evtCurLabel(base);
+    /* 与任务/对接人/经办人统一：使用 projectId 或 projectId|caseId 复合 id，optgroup 层级结构（├ 缩进、主项目不重复） */
+    const curVal = base.caseId ? (base.projectId + '|' + base.caseId) : (base.projectId || '');
     openModal(id ? '编辑日程' : '新建日程',
       field('title', '标题', 'text', base.title || '') +
-      field('project', '所属项目（含子项目）', 'select', curLabel, { options: opts }) +
+      fieldProjectCase('所属项目（含子项目）', curVal) +
       field('start', '开始时间', 'datetime', base.start ? ('' + base.start).slice(0, 16) : '') +
       field('end', '结束时间', 'datetime', base.end ? ('' + base.end).slice(0, 16) : ''),
       (v) => {
-        const r = evtResolve(v.project);
-        S.saveManualEvent({ id: id || undefined, title: v.title || '未命名日程', start: v.start ? new Date(v.start).toISOString() : new Date().toISOString(), end: v.end ? new Date(v.end).toISOString() : null, projectId: r.projectId, caseId: r.caseId }, !id);
+        const raw = v.projectId || '';
+        let projectId = null, caseId = null;
+        if (raw.indexOf('|') >= 0) { const parts = raw.split('|'); projectId = parts[0] || null; caseId = parts[1] || null; }
+        else { projectId = raw || null; }
+        S.saveManualEvent({ id: id || undefined, title: v.title || '未命名日程', start: v.start ? new Date(v.start).toISOString() : new Date().toISOString(), end: v.end ? new Date(v.end).toISOString() : null, projectId: projectId, caseId: caseId }, !id);
         closeModal(); render();
       });
   }
@@ -1273,6 +1272,44 @@
       <div class="ph"><button class="mini" data-act="jud-addrec" data-id="${j.id}">+ 沟通</button><button class="mini" data-act="jud-edit" data-id="${j.id}">编辑</button><button class="mini danger" data-act="jud-del" data-id="${j.id}">删除</button></div></div>`, null, { readonly: true });
   }
 
+  /* ===================== 部门（参照经办人：卡片列表 + 检索 + 新增/编辑/删除/详情） =====================
+   * 自动按"所属单位"聚类排序：同一单位的部门排列在一起，便于集中查看与统一管理。 */
+  function viewDepartments() {
+    const q = (state.deptFilter.q || '').toLowerCase();
+    const all = S.listDepartmentsSorted(); /* 按 org → name 升序 */
+    const list = q ? all.filter((d) => (d.name + (d.org || '') + (d.contact || '') + (d.address || '')).toLowerCase().indexOf(q) >= 0) : all;
+    /* 在按 org 分组的卡片之间插入"单位分组小标题"（同一单位的部门聚拢） */
+    const cards = list.length ? list.map((d) => `<li class="card-pill card-pill--personnel" data-act="dept-open" data-id="${d.id}">
+      <span class="drag-handle" data-drag-handle title="拖拽排序">⠿</span>
+      <span class="cp-cell cp-name">${esc(d.name)}</span>
+      <span class="cp-cell cp-proj">${esc(d.org || '—')}${d.address ? '<span class="cp-sub">' + esc(d.address) + '</span>' : ''}</span>
+      <span class="cp-cell cp-contact">${esc(d.contact || '—')}</span>
+      <span class="cp-act">
+        <button class="mini" data-act="dept-edit" data-id="${d.id}">编辑</button>
+        <button class="mini danger" data-act="dept-del" data-id="${d.id}">删</button>
+      </span>
+    </li>`).join('') : '<div class="empty"><p>暂无部门</p></div>';
+    return `<div class="view-clients">
+      <div class="view-toolbar">
+        <input class="search" data-act="dept-q" placeholder="检索部门 / 单位 / 联系方式 / 地址…" value="${esc(state.deptFilter.q)}">
+        <button class="btn primary" data-act="dept-new">+ 新建部门</button>
+      </div>
+      <ul class="card-list">${cards}</ul>
+    </div>`;
+  }
+  function deptForm(d) { d = d || {}; return field('name', '部门', 'text', d.name) + field('org', '所属单位', 'text', d.org, { wide: true, ph: '如：广东金轮律师事务所' }) + field('contact', '联系方式', 'text', d.contact) + field('address', '地址', 'text', d.address, { wide: true }); }
+  /* 部门名重名校验：同一所属单位内不能重名（不同单位允许同名） */
+  function deptNameDup(list, name, org, excludeId) {
+    const n = (name || '').trim().toLowerCase(), o = (org || '').trim().toLowerCase();
+    return list.some((d) => d.id !== excludeId && (d.name || '').trim().toLowerCase() === n && (d.org || '').trim().toLowerCase() === o);
+  }
+  function bindDeptForm(id) { const d = id ? S.getDepartment(id) : null; openModal(id ? '编辑部门' : '新建部门', deptForm(d), (v) => { const nm = (v.name || '').trim(); if (!nm) { toast('部门名称不能为空', 'err'); return; } if (deptNameDup(S.listDepartments(), nm, v.org, id)) { toast('同一所属单位下「' + nm + '」已存在，请勿重复添加', 'err'); return; } const data = { name: nm, org: (v.org || '').trim(), contact: (v.contact || '').trim(), address: (v.address || '').trim() }; if (id) { data.id = id; S.saveDepartment(data, false); } else S.saveDepartment(data, true); closeModal(); render(); }); }
+  function deptDetail(id) {
+    const d = S.getDepartment(id); if (!d) return;
+    openModal(d.name + '（部门）', `<div class="detail"><div class="dl"><div><b>部门</b>${esc(d.name)}</div><div><b>所属单位</b>${esc(d.org || '—')}</div><div><b>联系方式</b>${esc(d.contact || '—')}</div><div><b>地址</b>${esc(d.address || '—')}</div></div>
+      <div class="ph"><button class="mini" data-act="dept-edit" data-id="${d.id}">编辑</button><button class="mini danger" data-act="dept-del" data-id="${d.id}">删除</button></div></div>`, null, { readonly: true });
+  }
+
   /* ===================== 数据导出 ===================== */
   function viewExport() {
     return `<div class="export-wrap">
@@ -1418,6 +1455,7 @@
     'evt-new', 'evt-edit', 'evt-empty', 'evt-project', 'evt-done', 'evt-del',
     'cli-new', 'cli-edit', 'cli-del', 'cli-addrec',
     'jud-new', 'jud-edit', 'jud-del', 'jud-addrec',
+    'dept-new', 'dept-edit', 'dept-del', 'dept-open',
     'cm-edit-sec', 'cm-add-sec', 'cm-manage-sec', 'cm-del-sec', 'cm-add-field', 'cm-edit-field', 'cm-del-field',
     'imp-file', 'report-apply', 'exp-sync'
   ]);
@@ -1454,7 +1492,7 @@
       case 'evt-select': state.evtDetailId = el.dataset.id; render(); break;
       case 'evt-detail-close': state.evtDetailId = null; render(); break;
       case 'evt-empty': { const dt = el.dataset.date; if (!dt) break; const start = new Date(dt); const end = new Date(start.getTime() + 3600000); state.evtDetailId = null; bindEvtForm(null, { start: start.toISOString(), end: end.toISOString() }); break; }
-      case 'evt-project': { const eid = el.dataset.evt; const ev = S.getManualEvent(eid); if (!ev) break; const r = evtResolve(el.value); S.saveManualEvent(Object.assign({}, ev, { projectId: r.projectId, caseId: r.caseId }), false); render(); break; }
+      case 'evt-project': { const eid = el.dataset.evt; const ev = S.getManualEvent(eid); if (!ev) break; const raw = el.value || ''; let projectId = null, caseId = null; if (raw.indexOf('|') >= 0) { const parts = raw.split('|'); projectId = parts[0] || null; caseId = parts[1] || null; } else { projectId = raw || null; } S.saveManualEvent(Object.assign({}, ev, { projectId: projectId, caseId: caseId }), false); render(); break; }
       case 'evt-open': { const k = el.dataset.kind, ref = el.dataset.ref; if ((k === 'task') && ref) { const t = S.getTask(ref); if (t) { const p = S.getProject(t.projectId); const c = t.caseId && p ? (p.cases || []).find((x) => x.id === t.caseId) : null; const projLabel = p ? p.name : '—'; const caseLabel = c ? ' › ' + c.name : ''; openModal('任务', `<div class="detail"><div class="dl"><div><b>任务</b>${esc(t.title)}</div><div><b>关联项目</b>${esc(projLabel + caseLabel)}</div><div><b>截止</b>${fmtDT(t.dueDate)}</div><div><b>状态</b>${esc(t.status)}</div></div>${t.note ? `<div class="kv kv-mod"><span class="kv-k">备注</span><span class="kv-v" style="white-space:pre-wrap">${esc(t.note)}</span></div>` : ''}</div>`, null, { readonly: true }); } } else if ((k === 'hearing' || k === 'contract' || k === 'renewal') && ref) { state.projOpenId = ref; navigate('projects'); } break; }
       case 'evt-done': { const r = { eventId: el.dataset.evt || null, projectId: el.dataset.ref, caseId: el.dataset.case || null, kind: el.dataset.kind }; S.setScheduleDone(r, !S.isScheduleDone(r)); render(); break; }
       case 'evt-del': {
@@ -1478,6 +1516,10 @@
       case 'jud-edit': bindJudForm(id); break;
       case 'jud-del': confirmModal('确认删除该经办人？', () => { S.deleteJudge(id); render(); }); break;
       case 'jud-addrec': openModal('添加沟通记录', field('content', '内容', 'textarea', '', { wide: true }) + field('note', '备注', 'textarea', '', { rows: 2, ph: '补充说明（选填，200 字以内）', wide: true, maxlength: 200 }), (v) => { S.addJudgeRecord(id, { content: v.content, note: v.note || '' }); closeModal(); render(); }); break;
+      case 'dept-new': bindDeptForm(null); break;
+      case 'dept-open': deptDetail(id); break;
+      case 'dept-edit': bindDeptForm(id); break;
+      case 'dept-del': confirmModal('确认删除该部门？', () => { S.deleteDepartment(id); render(); }); break;
       case 'report-apply': applyReport(); break;
       case 'exp-sync': apiSync(); break;
       case 'exp-validate': apiValidate(); break;
@@ -1792,6 +1834,7 @@
     const pq = $('[data-act="proj-q"]'); if (pq) pq.oninput = (e) => { state.projFilter.q = e.target.value; render(); };
     const cq = $('[data-act="cli-q"]'); if (cq) cq.oninput = (e) => { state.cliFilter.q = e.target.value; render(); };
     const jq = $('[data-act="jud-q"]'); if (jq) jq.oninput = (e) => { state.judFilter.q = e.target.value; render(); };
+    const dq = $('[data-act="dept-q"]'); if (dq) dq.oninput = (e) => { state.deptFilter.q = e.target.value; render(); };
     const ps = $('[data-act="proj-status"]'); if (ps) ps.onchange = (e) => { state.projFilter.status = e.target.value; render(); };
     const pc = $('[data-act="proj-cause"]'); if (pc) pc.onchange = (e) => { state.projFilter.cause = e.target.value; render(); };
     const pt = $('[data-act="proj-tag"]'); if (pt) pt.onchange = (e) => { state.projFilter.tag = e.target.value; render(); };
