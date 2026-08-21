@@ -43,7 +43,7 @@
   function render() {
     /* 重渲染前记录当前聚焦的输入（用于检索框输入/删除时不丢失焦点与光标位置） */
     const activeEl = document.activeElement;
-    const activeAct = (activeEl && activeEl.dataset && activeEl.dataset.act && /^((proj|cli|jud)-q)$/.test(activeEl.dataset.act)) ? activeEl.dataset.act : null;
+    const activeAct = (activeEl && activeEl.dataset && activeEl.dataset.act && /^((proj|cli|jud|dept)-q)$/.test(activeEl.dataset.act)) ? activeEl.dataset.act : null;
     let activeCaret = null;
     if (activeAct && activeEl.selectionStart != null) { try { activeCaret = activeEl.selectionStart; } catch (e) {} }
     $('#nav').innerHTML = NAV.map((n) => {
@@ -1844,10 +1844,22 @@
       if (el.tagName === 'SELECT') el.onchange = () => onAct(el.dataset.act, el.dataset.id, el);
       else el.onclick = (e) => { onAct(el.dataset.act, el.dataset.id, el); e.stopPropagation(); };
     });
-    const pq = $('[data-act="proj-q"]'); if (pq) pq.oninput = (e) => { state.projFilter.q = e.target.value; render(); };
-    const cq = $('[data-act="cli-q"]'); if (cq) cq.oninput = (e) => { state.cliFilter.q = e.target.value; render(); };
-    const jq = $('[data-act="jud-q"]'); if (jq) jq.oninput = (e) => { state.judFilter.q = e.target.value; render(); };
-    const dq = $('[data-act="dept-q"]'); if (dq) dq.oninput = (e) => { state.deptFilter.q = e.target.value; render(); };
+    /* IME 兼容的检索输入绑定：拼音组合期间（compositionstart~compositionend）只更新状态、不重渲染。
+     * 若 input 时立即 render() 会替换输入框元素、打断中文输入法组合会话，导致拼音变成英文字母。 */
+    const bindSearchInput = (el, filterKey) => {
+      if (!el) return;
+      let composing = false;
+      el.addEventListener('compositionstart', () => { composing = true; });
+      el.addEventListener('compositionend', () => { composing = false; });
+      el.addEventListener('input', () => {
+        state[filterKey].q = el.value;
+        if (!composing) render();
+      });
+    };
+    bindSearchInput($('[data-act="proj-q"]'), 'projFilter');
+    bindSearchInput($('[data-act="cli-q"]'), 'cliFilter');
+    bindSearchInput($('[data-act="jud-q"]'), 'judFilter');
+    bindSearchInput($('[data-act="dept-q"]'), 'deptFilter');
     const ps = $('[data-act="proj-status"]'); if (ps) ps.onchange = (e) => { state.projFilter.status = e.target.value; render(); };
     const pc = $('[data-act="proj-cause"]'); if (pc) pc.onchange = (e) => { state.projFilter.cause = e.target.value; render(); };
     const pt = $('[data-act="proj-tag"]'); if (pt) pt.onchange = (e) => { state.projFilter.tag = e.target.value; render(); };
