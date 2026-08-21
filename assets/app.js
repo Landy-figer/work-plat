@@ -106,6 +106,7 @@
     /* 模态框内的"备注"textarea：失焦自动保存 */
     const cliNote = $('#modal-body [data-act="cli-savenote"]'); if (cliNote) cliNote.onblur = (e) => { S.setClientNote(e.target.dataset.id, e.target.value || ''); toast('备注已保存', 'ok'); };
     const judNote = $('#modal-body [data-act="jud-savenote"]'); if (judNote) judNote.onblur = (e) => { S.setJudgeNote(e.target.dataset.id, e.target.value || ''); toast('备注已保存', 'ok'); };
+    const deptNote = $('#modal-body [data-act="dept-savenote"]'); if (deptNote) deptNote.onblur = (e) => { S.setDepartmentNote(e.target.dataset.id, e.target.value || ''); toast('备注已保存', 'ok'); };
   }
   function closeModal() { $('#modal').classList.remove('open'); }
   /* 应用内确认弹窗：替代原生 confirm()，避免部分浏览器/内嵌环境拦截模态对话框导致删除等操作“静默失效” */
@@ -1282,36 +1283,41 @@
    * 自动按"所属单位"聚类排序：同一单位的部门排列在一起，便于集中查看与统一管理。 */
   function viewDepartments() {
     const q = (state.deptFilter.q || '').toLowerCase();
-    const all = S.listDepartmentsSorted(); /* 按 org → name 升序 */
-    const list = q ? all.filter((d) => (d.name + (d.org || '') + (d.contact || '') + (d.address || '')).toLowerCase().indexOf(q) >= 0) : all;
-    /* 在按 org 分组的卡片之间插入"单位分组小标题"（同一单位的部门聚拢） */
-    const cards = list.length ? list.map((d) => `<li class="card-pill card-pill--personnel" data-act="dept-open" data-id="${d.id}">
+    const all = S.listDepartmentsSorted(); /* 按 org → name 升序，同一单位聚拢 */
+    const list = q ? all.filter((d) => (d.name + (d.org || '') + (d.contact || '')).toLowerCase().indexOf(q) >= 0) : all;
+    const cards = list.length ? `<ul class="card-list">${list.map((d) => `<li class="card-pill card-pill--personnel card-pill--departments" data-act="dept-open" data-id="${d.id}">
+      <span class="drag-handle" data-drag-handle title="拖拽排序">⠿</span>
       <span class="cp-cell cp-name">${esc(d.name)}</span>
-      <span class="cp-cell cp-proj">${esc(d.org || '—')}${d.address ? '<span class="cp-sub">' + esc(d.address) + '</span>' : ''}</span>
+      <span class="cp-cell cp-proj">${esc(d.org || '—')}</span>
       <span class="cp-cell cp-contact">${esc(d.contact || '—')}</span>
-      <span class="cp-act">
+      <span class="cp-cell cp-act">
         <button class="mini" data-act="dept-edit" data-id="${d.id}">编辑</button>
         <button class="mini danger" data-act="dept-del" data-id="${d.id}">删</button>
       </span>
-    </li>`).join('') : '<div class="empty"><p>暂无部门</p></div>';
-    return `<div class="view-clients">
-      <div class="view-toolbar">
-        <input class="search" data-act="dept-q" placeholder="检索部门 / 单位 / 联系方式 / 地址…" value="${esc(state.deptFilter.q)}">
-        <button class="btn primary" data-act="dept-new">+ 新建部门</button>
-      </div>
-      <ul class="card-list">${cards}</ul>
+    </li>`).join('')}</ul>` : `<div class="empty"><p>暂无部门</p></div>`;
+    return `
+    <div class="toolbar">
+      <input class="search" data-act="dept-q" placeholder="检索部门 / 单位 / 联系方式…" value="${esc(state.deptFilter.q)}">
+      <button class="btn primary" data-act="dept-new">+ 新建部门</button>
+    </div>
+    <div class="tbl-scroll">
+    <div class="card-list-head card-list-head--departments">
+      <span></span><span>部门</span><span>所属单位</span><span>联系方式</span><span></span>
+    </div>
+    ${cards}
     </div>`;
   }
-  function deptForm(d) { d = d || {}; return field('name', '部门', 'text', d.name) + field('org', '所属单位', 'text', d.org, { wide: true, ph: '如：广东金轮律师事务所' }) + field('contact', '联系方式', 'text', d.contact) + field('address', '地址', 'text', d.address, { wide: true }); }
+  function deptForm(d) { d = d || {}; return field('name', '部门', 'text', d.name) + field('org', '所属单位', 'text', d.org, { wide: true, ph: '如：广东金轮律师事务所' }) + field('contact', '联系方式', 'text', d.contact) + field('note', '备注', 'textarea', d.note || '', { rows: 3, ph: '该部门的补充说明（500 字以内）', wide: true, maxlength: 500 }); }
   /* 部门名重名校验：同一所属单位内不能重名（不同单位允许同名） */
   function deptNameDup(list, name, org, excludeId) {
     const n = (name || '').trim().toLowerCase(), o = (org || '').trim().toLowerCase();
     return list.some((d) => d.id !== excludeId && (d.name || '').trim().toLowerCase() === n && (d.org || '').trim().toLowerCase() === o);
   }
-  function bindDeptForm(id) { const d = id ? S.getDepartment(id) : null; openModal(id ? '编辑部门' : '新建部门', deptForm(d), (v) => { const nm = (v.name || '').trim(); if (!nm) { toast('部门名称不能为空', 'err'); return; } if (deptNameDup(S.listDepartments(), nm, v.org, id)) { toast('同一所属单位下「' + nm + '」已存在，请勿重复添加', 'err'); return; } const data = { name: nm, org: (v.org || '').trim(), contact: (v.contact || '').trim(), address: (v.address || '').trim() }; if (id) { data.id = id; S.saveDepartment(data, false); } else S.saveDepartment(data, true); closeModal(); render(); }); }
+  function bindDeptForm(id) { const d = id ? S.getDepartment(id) : null; openModal(id ? '编辑部门' : '新建部门', deptForm(d), (v) => { const nm = (v.name || '').trim(); if (!nm) { toast('部门名称不能为空', 'err'); return; } if (deptNameDup(S.listDepartments(), nm, v.org, id)) { toast('同一所属单位下「' + nm + '」已存在，请勿重复添加', 'err'); return; } const data = { name: nm, org: (v.org || '').trim(), contact: (v.contact || '').trim(), note: (v.note || '').slice(0, 500) }; if (id) { data.id = id; S.saveDepartment(data, false); } else S.saveDepartment(data, true); closeModal(); render(); }); }
   function deptDetail(id) {
     const d = S.getDepartment(id); if (!d) return;
-    openModal(d.name + '（部门）', `<div class="detail"><div class="dl"><div><b>部门</b>${esc(d.name)}</div><div><b>所属单位</b>${esc(d.org || '—')}</div><div><b>联系方式</b>${esc(d.contact || '—')}</div><div><b>地址</b>${esc(d.address || '—')}</div></div>
+    openModal(d.name + '（部门）', `<div class="detail"><div class="dl"><div><b>部门</b>${esc(d.name)}</div><div><b>所属单位</b>${esc(d.org || '—')}</div><div><b>联系方式</b>${esc(d.contact || '—')}</div></div>
+      <div class="person-note"><label class="person-note-label">备注</label><textarea data-act="dept-savenote" data-id="${d.id}" maxlength="500" placeholder="记录与该部门相关的补充说明（如职责、负责人、注意事项等）">${esc(d.note || '')}</textarea></div>
       <div class="ph"><button class="mini" data-act="dept-edit" data-id="${d.id}">编辑</button><button class="mini danger" data-act="dept-del" data-id="${d.id}">删除</button></div></div>`, null, { readonly: true });
   }
 
@@ -1849,6 +1855,7 @@
     /* 对接人/经办人详情弹窗的"备注"：失焦自动保存（轻量更新，不重渲整页以免关闭模态） */
     const cliNote = $('[data-act="cli-savenote"]'); if (cliNote) cliNote.onblur = (e) => { S.setClientNote(e.target.dataset.id, e.target.value || ''); toast('备注已保存', 'ok'); };
     const judNote = $('[data-act="jud-savenote"]'); if (judNote) judNote.onblur = (e) => { S.setJudgeNote(e.target.dataset.id, e.target.value || ''); toast('备注已保存', 'ok'); };
+    const deptNote = $('[data-act="dept-savenote"]'); if (deptNote) deptNote.onblur = (e) => { S.setDepartmentNote(e.target.dataset.id, e.target.value || ''); toast('备注已保存', 'ok'); };
     // 智能汇报：输入即解析预览 + 句末自动应用
     const ta = $('#report-text');
     if (ta) {
