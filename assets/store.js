@@ -484,9 +484,15 @@
     getDepartment(id) { return find(DB.departments || [], id); },
     saveDepartment(d, isNew) {
       if (!Array.isArray(DB.departments)) DB.departments = [];
-      if (isNew) { d.id = uid('dep'); DB.departments.push(d); audit('新建部门', d.name); }
+      if (isNew) { d.id = uid('dep'); d.note = d.note || ''; DB.departments.push(d); audit('新建部门', d.name); }
       else { const o = find(DB.departments, d.id); if (!o) return; Object.assign(o, d); audit('更新部门', d.name); }
       persist(); return d;
+    },
+    setDepartmentNote(id, note) {
+      if (!Array.isArray(DB.departments)) return;
+      const o = find(DB.departments, id); if (!o) return; o.note = note || '';
+      audit('部门备注', o.name);
+      persist();
     },
     /* 部门列表按"所属单位 → 部门名"升序排列（同一单位的部门聚在一起） */
     listDepartmentsSorted() {
