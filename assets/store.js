@@ -266,7 +266,8 @@
 
     addProgress(id, note) {
       const o = find(DB.projects, id); if (!o) return;
-      o.progress.unshift({ date: note.date || todayStr(), content: note.content, author: note.author || DB.meta.currentUser });
+      /* date 显式传空（''）则留空；未传（undefined/null）回退为今天（如日程完成自动记录） */
+      o.progress.unshift({ date: note.date != null ? note.date : todayStr(), end: note.end || '', content: note.content, author: note.author || DB.meta.currentUser });
       o.updatedAt = new Date().toISOString();
       audit('新增进展', o.name + '：' + note.content.slice(0, 20));
       persist();
@@ -283,7 +284,8 @@
       const o = find(DB.projects, id); if (!o || !o.progress) return;
       const d = o.progress[idx]; if (!d) return;
       if (note.content != null) d.content = note.content;
-      if (note.date) d.date = note.date;
+      if (note.date != null) d.date = note.date; /* 允许留空（清空原日期） */
+      if (note.end != null) d.end = note.end;
       o.updatedAt = new Date().toISOString();
       audit('更新进展', o.name + '：' + (note.content || '').slice(0, 20));
       persist();
@@ -337,7 +339,7 @@
       const p = find(DB.projects, projectId); if (!p || !p.cases) return;
       const c = p.cases.find((x) => x.id === caseId); if (!c) return;
       c.progress = c.progress || [];
-      c.progress.unshift({ date: note.date || todayStr(), content: note.content, author: note.author || DB.meta.currentUser });
+      c.progress.unshift({ date: note.date != null ? note.date : todayStr(), end: note.end || '', content: note.content, author: note.author || DB.meta.currentUser });
       c.updatedAt = new Date().toISOString();
       p.updatedAt = new Date().toISOString();
       audit('新增案件进展', p.name + ' / ' + (c.name || '未命名案件') + '：' + note.content.slice(0, 20));
@@ -358,7 +360,8 @@
       const c = p.cases.find((x) => x.id === caseId); if (!c || !c.progress) return;
       const d = c.progress[idx]; if (!d) return;
       if (note.content != null) d.content = note.content;
-      if (note.date) d.date = note.date;
+      if (note.date != null) d.date = note.date; /* 允许留空 */
+      if (note.end != null) d.end = note.end;
       c.updatedAt = new Date().toISOString();
       p.updatedAt = new Date().toISOString();
       audit('更新案件进展', p.name + ' / ' + (c.name || '未命名案件') + '：' + (note.content || '').slice(0, 20));
