@@ -27,13 +27,13 @@
 
   /* ===================== 导航 ===================== */
   const NAV = [
-    { id: 'dashboard', label: '工作台', icon: '▦', c: 'oklch(62% 0.052 240)', title: '工作台' },
-    { id: 'calendar', label: '日程管理', icon: '◷', c: 'oklch(59% 0.050 155)', title: '日程管理' },
-    { id: 'projects', label: '项目管理', icon: '▤', c: 'oklch(61% 0.058 45)', title: '项目管理' },
-    { id: 'clients', label: '对接人', icon: '☺', c: 'oklch(69% 0.058 80)', title: '对接人' },
-    { id: 'judges', label: '经办人', icon: '⚖', c: 'oklch(64% 0.060 70)', title: '经办人' },
-    { id: 'departments', label: '部门', icon: '🏢', c: 'oklch(58% 0.050 195)', title: '部门' },
-    { id: 'export', label: '数据导出', icon: '⇩', c: 'oklch(62% 0.048 200)', title: '数据导出' }
+    { id: 'dashboard', label: '工作台', icon: '▦', c: '#6366F1', title: '工作台' },
+    { id: 'calendar', label: '日程管理', icon: '◷', c: '#0EA5E9', title: '日程管理' },
+    { id: 'projects', label: '项目管理', icon: '▤', c: '#8B5CF6', title: '项目管理' },
+    { id: 'clients', label: '对接人', icon: '☺', c: '#A78BFA', title: '对接人' },
+    { id: 'judges', label: '经办人', icon: '⚖', c: '#7C3AED', title: '经办人' },
+    { id: 'departments', label: '部门', icon: '🏢', c: '#5B21B6', title: '部门' },
+    { id: 'export', label: '数据导出', icon: '⇩', c: '#4F46E5', title: '数据导出' }
   ];
   const NAVC = { dashboard: 'oklch(62% 0.052 240)', calendar: 'oklch(59% 0.050 155)', projects: 'oklch(61% 0.058 45)', clients: 'oklch(69% 0.058 80)', judges: 'oklch(64% 0.060 70)', export: 'oklch(62% 0.048 200)' };
 
