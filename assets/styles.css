@@ -629,6 +629,12 @@ select option.opt-parent { font-weight: 700; color: var(--ink); }
 .cr-tl-arrow { color: var(--mc); margin: 0 4px; }
 .cr-tl-meta { font-size: var(--fs-xs); color: var(--ink-2); }
 .cr-tl-empty { font-size: var(--fs-xs); color: var(--muted); padding: 8px 0; }
+/* 债权人详情行（板块内 kv-mod 行）：标签"债权人" + 名称后置 + 点击展开流转时间轴 */
+.cr-cred-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; cursor: pointer; min-width: 0; white-space: normal; }
+.cr-cred-head:hover .cr-cred-name { color: var(--mc); }
+.cr-cred-name { font-weight: var(--fw-semibold); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.cr-cred-sub { font-size: var(--fs-xs); color: var(--muted); flex-shrink: 0; }
+.cr-cred-tl { grid-column: 1 / -1; border-top: 1px dashed var(--line); margin-top: 8px; }
 
 @keyframes pop { from { transform: scale(.96); opacity: .4; } to { transform: scale(1); opacity: 1; } }
 @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
@@ -888,7 +894,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   margin: 0;
   padding: 11px 14px;
-  min-height: 46px;
+  height: 46px;
   box-sizing: border-box;
   background: var(--surface-2);
   border-bottom: 1px solid var(--line);
