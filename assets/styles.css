@@ -322,9 +322,16 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: var(--fw-bold); col
 .kv-k { color: var(--sub); flex-shrink: 0; }
 .kv-v { color: var(--ink); text-align: right; word-break: break-all; }
 .prog { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.prog li { display: grid; grid-template-columns: 200px 1fr auto; gap: 10px; font-size: var(--fs-sm); color: var(--ink-2); padding: 9px 11px; background: var(--surface); border-radius: var(--radius-sm); border: 1px solid var(--line); }
-.prog-d { color: var(--muted); font-family: var(--font-ui); font-size: var(--fs-xs); white-space: nowrap; } .prog-c { color: var(--ink); font-family: var(--font-note); overflow: hidden; text-overflow: ellipsis; } .prog-a { color: var(--muted); white-space: nowrap; }
+.prog li { display: grid; grid-template-columns: 220px minmax(0, 1fr) auto; align-items: center; gap: 10px; font-size: var(--fs-sm); color: var(--ink-2); padding: 9px 11px; background: var(--surface); border-radius: var(--radius-sm); border: 1px solid var(--line); }
+.prog-d { color: var(--muted); font-family: var(--font-ui); font-size: var(--fs-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .prog-c { color: var(--ink); font-family: var(--font-note); overflow: hidden; text-overflow: ellipsis; } .prog-a { color: var(--muted); white-space: nowrap; }
 .prog-note { margin-top: 4px; padding: 4px 8px; background: oklch(95% 0.02 250 / .5); border-left: 2px solid var(--mc); border-radius: 3px; color: var(--ink-2); font-size: var(--fs-xs); line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+/* 窄屏：日期/内容/操作堆叠，避免日期溢出与内容重叠；时间仍垂直居中 */
+@media (max-width: 640px) {
+  .prog li { grid-template-columns: 1fr; gap: 4px 10px; }
+  .prog-d { grid-row: 1; }
+  .prog-c { grid-row: 2; }
+  .prog-a { grid-row: 3; justify-self: end; }
+}
 /* 对接人/经办人详情弹窗的"备注"栏（在基础信息与"沟通情况"之间） */
 .person-note { margin: 4px 11px 12px; padding: 10px 12px; background: oklch(97% 0.015 250 / .6); border: 1px dashed oklch(85% 0.02 250); border-radius: var(--radius-sm); }
 .person-note-label { display: block; font-size: var(--fs-xs); font-weight: var(--fw-bold); color: var(--mc); letter-spacing: .5px; margin-bottom: 6px; }
