@@ -91,15 +91,26 @@ body {
   line-height: var(--lh-base);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  /* 水彩画布：四角的柔色晕染（天蓝·薰衣草·蓝紫·淡紫）+ 基底淡紫白对角渐变
-   * 背景 fixed，滚动时晕染保持稳定，呈现水彩纸的柔和质感；白色卡片形成呼吸对比。 */
+  /* 水彩画布：左天蓝·中淡紫·右深紫·底深紫 柔晕染 + 中央留白 + 基底淡紫白对角渐变
+   * 多层大半径 radial-gradient 模拟水彩纸的有机晕染；background-attachment:fixed 滚动时晕染保持稳定；
+   * 白色卡片在画布上自然呼吸，不显拥挤。 */
   background:
-    radial-gradient(ellipse 62% 52% at 0% 0%,   rgba(186, 230, 253, .55) 0%, transparent 58%),
-    radial-gradient(ellipse 55% 50% at 100% 0%, rgba(221, 214, 254, .50) 0%, transparent 58%),
-    radial-gradient(ellipse 70% 55% at 50% 100%, rgba(196, 181, 253, .42) 0%, transparent 62%),
-    radial-gradient(ellipse 42% 42% at 8%  62%,  rgba(233, 213, 255, .38) 0%, transparent 58%),
-    radial-gradient(ellipse 38% 40% at 95% 70%,  rgba(199, 210, 254, .35) 0%, transparent 58%),
-    linear-gradient(135deg, #F8F7FF 0%, #F5F3FF 50%, #EEF2FF 100%);
+    /* 左侧天蓝水彩晕（主调） */
+    radial-gradient(ellipse 48% 68% at 14% 32%,  rgba(160, 214, 255, .60) 0%, transparent 62%),
+    /* 左侧中部淡蓝白过渡 */
+    radial-gradient(ellipse 32% 50% at 22% 72%,  rgba(190, 222, 252, .35) 0%, transparent 66%),
+    /* 中部淡紫过渡（水彩混色区） */
+    radial-gradient(ellipse 58% 58% at 52% 50%,  rgba(215, 208, 250, .45) 0%, transparent 66%),
+    /* 右侧深紫水彩晕 */
+    radial-gradient(ellipse 44% 64% at 88% 62%,  rgba(168, 148, 228, .55) 0%, transparent 64%),
+    /* 右下深紫加深 */
+    radial-gradient(ellipse 52% 42% at 76% 95%,  rgba(150, 128, 218, .40) 0%, transparent 66%),
+    /* 右上薰衣草淡晕 */
+    radial-gradient(ellipse 38% 38% at 90% 12%,  rgba(225, 212, 250, .48) 0%, transparent 62%),
+    /* 中央留白（让纸面透出，呼应水彩留白） */
+    radial-gradient(ellipse 42% 28% at 50% 8%,   rgba(255, 255, 255, .55) 0%, transparent 72%),
+    /* 基底：对角淡紫白渐变（画布底色） */
+    linear-gradient(135deg, #FAF8FF 0%, #F6F3FF 50%, #EFEEFE 100%);
   background-attachment: fixed;
 }
 
