@@ -127,10 +127,24 @@
   /* 进展状态编辑：修改说明与日期（作者保留，不展示「我」标识） */
   function openProgressEditor(title, item, onSave) {
     item = item || {};
-    openModal(title, field('content', '进展说明', 'textarea', item.content || '', { wide: true, rows: 3 }) + field('date', '日期', 'date', (item.date || '').slice(0, 10)), (v) => {
-      onSave({ content: v.content, date: v.date ? v.date : (item.date || '') });
-      closeModal(); render();
-    });
+    /* datetime-local 值格式 "YYYY-MM-DDTHH:mm"；兼容存库的 "YYYY-MM-DD HH:mm[:ss]" 或 ISO */
+    const dtLocal = (s) => (s != null && s !== '' ? String(s).slice(0, 16).replace(' ', 'T') : '');
+    openModal(title,
+      field('content', '进展说明', 'textarea', item.content || '', { wide: true, rows: 3 }) +
+      field('date', '开始时间（年月日时分）', 'datetime', dtLocal(item.date)) +
+      field('end', '结束时间（选填）', 'datetime', dtLocal(item.end)),
+      (v) => {
+        onSave({ content: v.content, date: v.date || '', end: v.end || '' });
+        closeModal(); render();
+      });
+  }
+  /* 进展时间展示：开始（年月日时分）；有结束时间则显示 开始 → 结束；两者皆空显示空串 */
+  function progTimeText(x) {
+    x = x || {};
+    const s = (x.date != null && x.date !== '') ? String(x.date).slice(0, 16).replace('T', ' ') : '';
+    const e = (x.end != null && x.end !== '') ? String(x.end).slice(0, 16).replace('T', ' ') : '';
+    if (s && e) return esc(s) + ' → ' + esc(e);
+    return esc(s || e || '');
   }
   /* 轻量 toast 反馈：用于板块新增/恢复等操作的即时状态提示 */
   function toast(msg, kind) {
@@ -340,8 +354,8 @@
   }
   function creditorEditorHtml(holders) {
     const list = Array.isArray(holders) ? holders : [];
-    return `<div class="fld wide"><span>债权持有人（多项，每位可展开录入债权流转明细）</span>
-      <div class="cr-editor" data-cr-editor>${list.length ? list.map(crHolderHtml).join('') : '<div class="cr-empty">暂无债权持有人，点击「+ 添加债权持有人」录入。</div>'}
+    return `<div class="fld wide"><span>债权人</span>
+      <div class="cr-editor" data-cr-editor>${list.length ? list.map(crHolderHtml).join('') : '<div class="cr-empty">暂无债权人，点击「+ 添加债权持有人」录入。</div>'}
         <button type="button" class="mini cr-add" data-cr-add>+ 添加债权持有人</button>
       </div></div>`;
   }
@@ -360,7 +374,7 @@
         ${open ? `<div class="cr-tl"><ul>${tl}</ul></div>` : ''}
       </div>`;
     }).join('');
-    return `<div class="kv kv-wide"><span class="kv-k">债权持有人（${list.length} 项）</span><div class="kv-v cr-detail">${rows}</div></div>`;
+    return `<div class="kv kv-wide"><span class="kv-k">债权人</span><div class="kv-v cr-detail">${rows}</div></div>`;
   }
   function collectCreditorItems() {
     const ed = $('#modal-body [data-cr-editor]'); if (!ed) return [];
@@ -690,7 +704,7 @@
     ] },
     '破产类': { modules: [
       { section: '破产要素', fields: [
-        { key: 'creditors', label: '债权持有人（多项，点击展开债权流转明细）', type: 'creditors', wide: true },
+        { key: 'creditors', label: '债权人', type: 'creditors', wide: true },
         { key: 'debtor', label: '债务人', type: 'text' },
         { key: 'admin', label: '管理人', type: 'text' },
         { key: 'claimNature', label: '债权性质', type: 'select', options: ['优先债权', '普通债权', '劣后债权', '共益债务', '其他'] },
@@ -879,14 +893,24 @@
     }).join('');
   }
   /* 破产要素：每位债权持有人单行（kv-mod），value 内含流转次数与最新债权金额，与其它字段格式一致 */
+  /* 债权人详情行：标签仅"债权人"，具体名称展示其后；点击展开该债权人的完整流转过程（时间节点 + 状态/路径变化） */
   function creditorsAsKvMod(holders) {
     const list = Array.isArray(holders) ? holders : [];
     if (!list.length) return '<div class="kv kv-mod"><span class="kv-k">债权人</span><span class="kv-v">—</span></div>';
     return list.map((h) => {
+      const open = state.openCreditors[h.id];
       const tfs = Array.isArray(h.transfers) ? h.transfers : [];
       const last = tfs.length ? (tfs[tfs.length - 1].amount || '') : '';
       const summary = `${tfs.length} 次流转${last ? '，最新债权 ' + esc(last) : ''}`;
-      return `<div class="kv kv-mod"><span class="kv-k">债权人（${esc(h.name || '未命名')}）</span><span class="kv-v" title="${esc(summary)}">${summary}</span></div>`;
+      const tl = tfs.length ? tfs.map((t) => `<li class="cr-tl-node"><div class="cr-tl-dot"></div><div class="cr-tl-body"><div class="cr-tl-date">${esc(t.date || '—')}</div><div class="cr-tl-flow">${esc(t.from || '')} <span class="cr-tl-arrow">→</span> ${esc(t.to || '')}</div><div class="cr-tl-meta">债权金额：<b>${esc(t.amount || '—')}</b>　申请执行人：${esc(t.applicant || '—')}</div></div></li>`).join('') : '<li class="cr-tl-empty">暂无流转记录</li>';
+      return `<div class="kv kv-mod cr-cred-row" data-cr-row="${esc(h.id)}">
+        <span class="kv-k">债权人</span>
+        <span class="kv-v cr-cred-head" data-act="cred-toggle" data-id="${esc(h.id)}" title="点击查看流转过程">
+          <span class="cr-cred-name">${esc(h.name || '未命名')}</span>
+          <span class="cr-cred-sub">${summary}${open ? ' ▲' : ' ▼'}</span>
+        </span>
+        ${open ? `<div class="cr-tl cr-cred-tl"><ul>${tl}</ul></div>` : ''}
+      </div>`;
     }).join('');
   }
 
@@ -977,7 +1001,7 @@
       <div class="kv-sec">其他备注</div>
       <ul class="prog">${notesHtml}</ul>
       <div class="kv-sec">进展状态</div>
-      <ul class="prog">${(p.progress || []).map((x, i) => `<li><span class="prog-d">${esc(x.date)}</span><span class="prog-c">${esc(x.content)}</span><span class="prog-a"><button class="mini" data-act="proj-editprog" data-id="${p.id}" data-idx="${i}">编辑</button> <button class="mini danger" data-act="proj-delprog" data-id="${p.id}" data-idx="${i}">删</button></span></li>`).join('') || '<li class="empty">暂无进展</li>'}</ul>
+      <ul class="prog">${(p.progress || []).map((x, i) => `<li><span class="prog-d">${progTimeText(x)}</span><span class="prog-c">${esc(x.content)}</span><span class="prog-a"><button class="mini" data-act="proj-editprog" data-id="${p.id}" data-idx="${i}">编辑</button> <button class="mini danger" data-act="proj-delprog" data-id="${p.id}" data-idx="${i}">删</button></span></li>`).join('') || '<li class="empty">暂无进展</li>'}</ul>
       <div class="kv-sec">关联任务</div>
       <ul class="prog">${tasks.map((t) => `<li><span class="prog-d">${fmtDate(t.dueDate)}</span><span class="prog-c">${esc(t.title)}</span><span class="prog-a"><span class="st st-${taskStatusClass(t.status)} st-act" data-act="task-status" data-id="${t.id}">${t.status}</span></span></li>`).join('') || '<li class="empty">暂无任务</li>'}</ul>
       <div class="ph"><button class="mini" data-act="proj-addtask" data-id="${p.id}">+ 任务</button><button class="mini" data-act="proj-addprog" data-id="${p.id}">+ 进展</button><button class="mini" data-act="proj-edit" data-id="${p.id}">编辑</button><button class="mini danger" data-act="proj-del" data-id="${p.id}">删除</button></div>
@@ -1132,7 +1156,7 @@
     const crc = (c.sectionCfg ? ((c.sectionCfg.hidden || []).length + (c.sectionCfg.deletedSections || []).length) : 0);
     const csecBadge = crc ? ` <span class="sec-badge">${crc}</span>` : '';
     const notesHtml = (c.notes && c.notes.length) ? c.notes.map((d, i) => `<li><span class="prog-d">${esc(d.date || '')}</span><span class="prog-c">${esc(d.content || '')}</span><span class="prog-a">${esc(d.recipient ? ('接收人：' + d.recipient) : '')}${d.archiveLocation ? (' · 位置：' + d.archiveLocation) : ''}${d.archiveCabinet ? (' · 柜：' + d.archiveCabinet) : ''}${d.author ? (' · ' + d.author) : ''} <button class="mini danger" data-act="case-delnote" data-pid="${p.id}" data-cid="${c.id}" data-doc="${i}">删</button></span></li>`).join('') : '<li class="empty">暂无备注</li>';
-    const progHtml = (c.progress && c.progress.length) ? c.progress.map((x, i) => `<li><span class="prog-d">${esc(x.date)}</span><span class="prog-c">${esc(x.content)}</span><span class="prog-a"><button class="mini" data-act="case-editprog" data-pid="${p.id}" data-cid="${c.id}" data-idx="${i}">编辑</button> <button class="mini danger" data-act="case-delprog" data-pid="${p.id}" data-cid="${c.id}" data-idx="${i}">删</button></span></li>`).join('') : '<li class="empty">暂无进展</li>';
+    const progHtml = (c.progress && c.progress.length) ? c.progress.map((x, i) => `<li><span class="prog-d">${progTimeText(x)}</span><span class="prog-c">${esc(x.content)}</span><span class="prog-a"><button class="mini" data-act="case-editprog" data-pid="${p.id}" data-cid="${c.id}" data-idx="${i}">编辑</button> <button class="mini danger" data-act="case-delprog" data-pid="${p.id}" data-cid="${c.id}" data-idx="${i}">删</button></span></li>`).join('') : '<li class="empty">暂无进展</li>';
     return `<div class="case-detail">
       <div class="ph" style="margin-bottom:8px"><button class="mini" data-act="cm-manage-sec" data-pid="${esc(p.id)}" data-id="${esc(c.id)}">板块管理${csecBadge}</button></div>
       <div class="mod-area mod-area--case" data-pid="${esc(p.id)}" data-cid="${esc(c.id)}">${secHtml}</div>
@@ -1485,7 +1509,7 @@
       case 'proj-edit': bindProjForm(id); break;
       case 'proj-del': confirmModal('确认删除该项目及其关联任务？此操作不可撤销。', () => { S.deleteProject(id); if (state.projOpenId === id) state.projOpenId = null; render(); }, { okText: '删除项目' }); break;
       case 'proj-addtask': openModal('新建关联任务', taskForm({ projectId: id }), (v) => { S.saveTask({ title: v.title, priority: v.priority, projectId: id, dueDate: v.dueDate ? new Date(v.dueDate).toISOString() : null, status: v.status }, true); closeModal(); render(); }); break;
-      case 'proj-addprog': openModal('添加进展', field('content', '进展说明', 'textarea', ''), (v) => { S.addProgress(id, { content: v.content }); closeModal(); render(); }); break;
+      case 'proj-addprog': openProgressEditor('添加进展', {}, (note) => { S.addProgress(id, note); render(); }); break;
       case 'proj-editprog': { const o = S.getProject(id); const x = o && o.progress[parseInt(el.dataset.idx, 10)]; if (x) openProgressEditor('编辑进展', x, (note) => { S.updateProgress(id, parseInt(el.dataset.idx, 10), note); render(); }); break; }
       case 'proj-delprog': confirmModal('确认删除该进展记录？删除后不可恢复。', () => { S.deleteProgress(id, parseInt(el.dataset.idx, 10)); render(); }); break;
       case 'proj-delnote': confirmModal('确认删除该备注？', () => { S.deleteNote(id, parseInt(el.dataset.doc, 10)); render(); }); break;
@@ -1494,7 +1518,7 @@
       case 'case-toggle': { const cid = el.dataset.cid; state.openCases[cid] = !state.openCases[cid]; render(); break; }
       case 'case-edit': openCaseForm(el.dataset.pid, el.dataset.cid); break;
       case 'case-del': confirmModal('确认删除该关联案件？删除后不可恢复。', () => { S.deleteCase(el.dataset.pid, el.dataset.cid); render(); }); break;
-      case 'case-addprog': openModal('添加案件进展', field('content', '进展说明', 'textarea', ''), (v) => { S.addCaseProgress(el.dataset.pid, el.dataset.cid, { content: v.content }); closeModal(); render(); }); break;
+      case 'case-addprog': openProgressEditor('添加案件进展', {}, (note) => { S.addCaseProgress(el.dataset.pid, el.dataset.cid, note); render(); }); break;
       case 'case-editprog': { const o = S.getCase(el.dataset.pid, el.dataset.cid); const x = o && o.progress[parseInt(el.dataset.idx, 10)]; if (x) openProgressEditor('编辑案件进展', x, (note) => { S.updateCaseProgress(el.dataset.pid, el.dataset.cid, parseInt(el.dataset.idx, 10), note); render(); }); break; }
       case 'case-delprog': confirmModal('确认删除该案件进展？删除后不可恢复。', () => { S.deleteCaseProgress(el.dataset.pid, el.dataset.cid, parseInt(el.dataset.idx, 10)); render(); }); break;
       case 'case-delnote': confirmModal('确认删除该案件备注？', () => { S.deleteCaseNote(el.dataset.pid, el.dataset.cid, parseInt(el.dataset.doc, 10)); render(); }); break;
